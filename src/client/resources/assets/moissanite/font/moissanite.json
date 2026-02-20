@@ -1,0 +1,12 @@
+{
+  "providers": [
+    {
+      "type": "ttf",
+      "file": "moissanite:arlrdbd.ttf",
+      "size": 10,
+      "oversample": 4,
+      "shift": [0, 0]
+    }
+  ]
+}
+

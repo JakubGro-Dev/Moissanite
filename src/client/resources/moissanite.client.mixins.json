@@ -1,0 +1,13 @@
+{
+	"required": true,
+	"package": "com.crussion.moissanite.mixin.client",
+	"compatibilityLevel": "JAVA_21",
+	"client": [
+		"ClientPacketListenerMixin",
+		"ConnectionMixin",
+		"ExampleClientMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}
