@@ -1,4 +1,4 @@
-package com.crussion.moissanite.features.general;
+package com.crussion.moissanite.features.misc;
 
 import com.crussion.moissanite.definitions.UiDefinitions;
 import com.crussion.moissanite.ui.data.UiInput;
