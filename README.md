@@ -47,6 +47,7 @@ Currently client will be updated to newest versions.
 
 	While picking up crate automatically on time throws pearl into pre spot.
 </details>
+
 - Auto Experimentation
 
 ### Spoofer
