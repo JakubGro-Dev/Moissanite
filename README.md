@@ -1,5 +1,10 @@
 # Moissanite
 
+
+<p align="center" width="100%">
+	<img width="33%" src="0ddb371b4f129f2739093cffbcb51ba0.jpg">
+</p>
+
 **Moissanite** is an open-source 1.21.11 client.
 Currently client will be updated to newest versions.
 
@@ -42,6 +47,7 @@ Currently client will be updated to newest versions.
 
 	While picking up crate automatically on time throws pearl into pre spot.
 </details>
+- Auto Experimentation
 
 ### Spoofer
 - <details><summary>Fabric spoofer (Mods hider)</summary>
