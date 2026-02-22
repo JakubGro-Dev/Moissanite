@@ -44,4 +44,9 @@ Currently client will be updated to newest versions.
 </details>
 
 ### Spoofer
-- Fabric spoofer (Mods hider) **SOON**
+- <details><summary>Fabric spoofer (Mods hider)</summary>
+
+	Since firament is a snitch, there is an option to hide selected mods.
+	By default, hides Moissanite.
+
+</details>
