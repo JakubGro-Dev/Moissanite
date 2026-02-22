@@ -14,7 +14,7 @@ Currently client will be updated to newest versions.
 ### Visual
 - Image on screen
 - Kuudra Position
-- Kuudra ESP *(SOON)*
+- Kuudra ESP
 
 ### Misc
 - Always Sprint
