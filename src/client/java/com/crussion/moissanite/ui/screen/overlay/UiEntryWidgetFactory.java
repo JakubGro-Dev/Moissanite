@@ -79,7 +79,7 @@ public final class UiEntryWidgetFactory implements OverlayRightPanel.EntryWidget
 		UiText.applyUiFont(box);
 		box.setValue(inputEntry.get());
 		box.setResponder(inputEntry::set);
-		box.setMaxLength(120);
+		box.setMaxLength(inputEntry.maxLength());
 		configureInput(box);
 		return box;
 	}

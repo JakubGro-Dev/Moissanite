@@ -7,11 +7,28 @@ import com.crussion.moissanite.input.FakeKeybinds;
 import com.crussion.moissanite.input.UiKeybinds;
 import com.crussion.moissanite.definitions.UiDefinitions;
 import com.crussion.moissanite.command.MoissaniteCommands;
+import com.crussion.moissanite.features.cheats.AutoExperiments;
+import com.crussion.moissanite.features.cheats.AutoDirection;
+import com.crussion.moissanite.features.cheats.AutoPearl;
+import com.crussion.moissanite.features.cheats.AutoPearlRefill;
+import com.crussion.moissanite.features.cheats.AutoRend;
+import com.crussion.moissanite.features.cheats.AutoRend_Reworked;
+import com.crussion.moissanite.features.cheats.KuudraPosTracker;
 import com.crussion.moissanite.features.cheats.WardrobeKeybinds;
 import com.crussion.moissanite.features.misc.AlwaysSprint;
+import com.crussion.moissanite.features.visual.KuudraEsp;
 import com.crussion.moissanite.features.misc.WindowNameChanger;
 import com.crussion.moissanite.features.visual.RenderImageOnScreen;
+import com.crussion.moissanite.features.visual.storage.StorageOverlayFeature;
 import com.crussion.moissanite.config.MoissaniteConfig;
+import com.crussion.moissanite.spoofer.ClientSpoofer;
+import com.crussion.moissanite.util.kuudra.KuudraPhaseTracker;
+import com.crussion.moissanite.features.kuudra.KuudraNoPre;
+import com.crussion.moissanite.features.kuudra.KuudraRendDamage;
+import com.crussion.moissanite.features.kuudra.KuudraSplits;
+import com.crussion.moissanite.features.kuudra.KuudraBossHp;
+import com.crussion.moissanite.features.kuudra.KuudraCubeHpTag;
+import com.crussion.moissanite.features.kuudra.KuudraSupplyWaypoints;
 
 public class MoissaniteClient implements ClientModInitializer {
 	@Override
@@ -19,12 +36,29 @@ public class MoissaniteClient implements ClientModInitializer {
 		UiDefinitions.init();
 		WindowNameChanger.init();
 		MoissaniteConfig.init();
+		ClientSpoofer.init();
 		UiEntrypoints.init();
 		MoissaniteCommands.init();
 		UiKeybinds.init();
 		FakeKeybinds.init();
 		WardrobeKeybinds.init();
+		AutoExperiments.init();
+		AutoDirection.init();
+		AutoPearl.init();
+		AutoPearlRefill.init();
+		AutoRend.init();
+		KuudraPhaseTracker.init();
+		KuudraPosTracker.init();
+		KuudraEsp.init();
+		KuudraNoPre.init();
+		KuudraRendDamage.init();
+		KuudraSplits.init();
+		KuudraBossHp.init();
+		KuudraCubeHpTag.init();
+		KuudraSupplyWaypoints.init();
+		AutoRend_Reworked.init();
 		AlwaysSprint.init();
 		RenderImageOnScreen.init();
+		StorageOverlayFeature.init();
 	}
 }

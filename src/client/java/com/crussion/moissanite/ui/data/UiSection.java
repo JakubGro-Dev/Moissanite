@@ -57,6 +57,10 @@ public final class UiSection {
 		return register(new UiSlider(entryName, min, max, defaultValue));
 	}
 
+	public UiSlider slider(String entryName, double min, double max, double defaultValue, double step) {
+		return register(new UiSlider(entryName, min, max, defaultValue, step));
+	}
+
 	public UiNumber number(String entryName, int min, int max, int defaultValue) {
 		return register(new UiNumber(entryName, min, max, defaultValue));
 	}
