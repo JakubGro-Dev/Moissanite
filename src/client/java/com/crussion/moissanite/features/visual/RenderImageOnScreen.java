@@ -11,7 +11,7 @@ import java.util.Locale;
 import java.util.Map;
 
 import com.crussion.moissanite.definitions.UiDefinitions;
-import com.crussion.moissanite.ui.screen.ImageOnScreenMoveScreen;
+import com.crussion.moissanite.ui.screen.MoveElementScreen;
 import com.mojang.blaze3d.platform.NativeImage;
 
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
@@ -22,6 +22,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.texture.DynamicTexture;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 
 public final class RenderImageOnScreen {
@@ -32,6 +33,82 @@ public final class RenderImageOnScreen {
 	private static final double ROUND_TO_HUNDREDTHS = 100.0;
 	private static final double MIN_SCALE = 0.1;
 	private static final double MAX_SCALE = 2.0;
+	private static final double MOVE_SCALE_STEP = 0.01;
+
+	private static final MoveElementScreen.MovableElementAdapter<DrawState> MOVE_ADAPTER = new MoveElementScreen.MovableElementAdapter<>() {
+		@Override
+		public Component title() {
+			return Component.literal("Move Image On Screen");
+		}
+
+		@Override
+		public Component unavailableMessage() {
+			return Component.literal("Select an image to move");
+		}
+
+		@Override
+		public DrawState getDrawState(int screenWidth, int screenHeight) {
+			return RenderImageOnScreen.getCurrentDrawState(screenWidth, screenHeight);
+		}
+
+		@Override
+		public MoveElementScreen.Position getVisiblePosition(DrawState drawState, int screenWidth, int screenHeight, boolean persistIfAdjusted) {
+			Position position = RenderImageOnScreen.getVisibleConfiguredPosition(drawState, screenWidth, screenHeight, persistIfAdjusted);
+			return new MoveElementScreen.Position(position.x(), position.y());
+		}
+
+		@Override
+		public MoveElementScreen.Position clampPosition(DrawState drawState, int screenWidth, int screenHeight, int x, int y) {
+			Position position = RenderImageOnScreen.clampPosition(drawState, screenWidth, screenHeight, x, y);
+			return new MoveElementScreen.Position(position.x(), position.y());
+		}
+
+		@Override
+		public int drawWidth(DrawState drawState) {
+			return drawState.drawWidth();
+		}
+
+		@Override
+		public int drawHeight(DrawState drawState) {
+			return drawState.drawHeight();
+		}
+
+		@Override
+		public void draw(GuiGraphics graphics, DrawState drawState, int x, int y) {
+			RenderImageOnScreen.drawImage(graphics, drawState, x, y);
+		}
+
+		@Override
+		public void applyDraggedPosition(DrawState drawState, int screenWidth, int screenHeight, int x, int y) {
+			RenderImageOnScreen.setConfiguredPosition(x, y);
+		}
+
+		@Override
+		public List<String> infoLines(DrawState drawState, int x, int y) {
+			return List.of(
+					"x " + x,
+					"y " + y,
+					"scale " + formatScale(RenderImageOnScreen.getConfiguredScale()));
+		}
+
+		@Override
+		public String footerText() {
+			return "Drag to move | Scroll to scale | Esc to close";
+		}
+
+		@Override
+		public boolean onMouseScroll(double yDelta) {
+			if (yDelta != 0.0D) {
+				RenderImageOnScreen.adjustConfiguredScale(yDelta * MOVE_SCALE_STEP);
+			}
+			return true;
+		}
+
+		@Override
+		public void onScreenClosed() {
+			RenderImageOnScreen.setMoveModeActive(false);
+		}
+	};
 
 	private static final Map<String, Path> IMAGES_BY_NAME = new LinkedHashMap<>();
 
@@ -83,7 +160,7 @@ public final class RenderImageOnScreen {
 
 		Screen returnScreen = client.screen;
 		setMoveModeActive(true);
-		client.setScreen(new ImageOnScreenMoveScreen(returnScreen));
+		client.setScreen(new MoveElementScreen<>(returnScreen, MOVE_ADAPTER));
 	}
 
 	public static void setMoveModeActive(boolean moveModeActive) {
@@ -322,6 +399,14 @@ public final class RenderImageOnScreen {
 
 	private static int clampToRange(int value, int min, int max) {
 		return Math.max(min, Math.min(max, value));
+	}
+
+	private static String formatScale(double scale) {
+		double rounded = Math.round(scale * ROUND_TO_HUNDREDTHS) / ROUND_TO_HUNDREDTHS;
+		if (rounded == (long) rounded) {
+			return Long.toString((long) rounded);
+		}
+		return Double.toString(rounded);
 	}
 
 	public record DrawState(Identifier textureId, int textureWidth, int textureHeight, int drawWidth, int drawHeight) {

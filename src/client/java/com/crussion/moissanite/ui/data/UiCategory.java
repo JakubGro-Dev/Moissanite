@@ -61,6 +61,10 @@ public final class UiCategory {
 		return defaultSection().slider(entryName, min, max, defaultValue);
 	}
 
+	public UiSlider slider(String entryName, double min, double max, double defaultValue, double step) {
+		return defaultSection().slider(entryName, min, max, defaultValue, step);
+	}
+
 	public UiNumber number(String entryName, int min, int max, int defaultValue) {
 		return defaultSection().number(entryName, min, max, defaultValue);
 	}

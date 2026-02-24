@@ -15,24 +15,29 @@ public final class SliderWidget extends AbstractSliderButton {
 	private final UiSlider slider;
 	private final double min;
 	private final double max;
+	private final double step;
+	private final int decimals;
 
 	public SliderWidget(int x, int y, int width, int height, UiSlider slider) {
 		super(x, y, width, height, Component.empty(), toNormalized(slider.get(), slider.min(), slider.max()));
 		this.slider = slider;
 		this.min = slider.min();
 		this.max = slider.max();
+		this.step = slider.step();
+		this.decimals = decimalsFromStep(this.step);
 		updateMessage();
 	}
 
 	@Override
 	protected void updateMessage() {
-		double value = fromNormalized(this.value, min, max);
-		setMessage(UiText.uiTextStatic(String.format(Locale.ROOT, "%.2f", value)));
+		double value = slider.snap(fromNormalized(this.value, min, max));
+		setMessage(UiText.uiTextStatic(String.format(Locale.ROOT, "%." + decimals + "f", value)));
 	}
 
 	@Override
 	protected void applyValue() {
 		slider.set(fromNormalized(this.value, min, max));
+		this.value = toNormalized(slider.get(), min, max);
 	}
 
 	private static double toNormalized(double value, double min, double max) {
@@ -44,6 +49,19 @@ public final class SliderWidget extends AbstractSliderButton {
 
 	private static double fromNormalized(double value, double min, double max) {
 		return min + (max - min) * value;
+	}
+
+	private static int decimalsFromStep(double step) {
+		if (step >= 1.0) {
+			return 0;
+		}
+		int decimals = 0;
+		double value = step;
+		while (decimals < 6 && Math.abs(Math.rint(value) - value) > 1.0e-6) {
+			value *= 10.0;
+			decimals++;
+		}
+		return Math.max(0, decimals);
 	}
 
 	@Override

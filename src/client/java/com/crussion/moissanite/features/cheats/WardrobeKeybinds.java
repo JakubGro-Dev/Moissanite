@@ -2,6 +2,8 @@ package com.crussion.moissanite.features.cheats;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 
+import java.util.function.Consumer;
+
 import com.crussion.moissanite.definitions.UiDefinitions;
 import com.crussion.moissanite.input.FakeKeybinds;
 
@@ -12,13 +14,17 @@ import net.minecraft.network.HashedStack;
 import net.minecraft.network.protocol.game.ClientboundOpenScreenPacket;
 import net.minecraft.network.protocol.game.ServerboundContainerClickPacket;
 import net.minecraft.network.protocol.game.ServerboundContainerClosePacket;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.inventory.ClickType;
 
 public final class WardrobeKeybinds {
 	private static final int COOLDOWN_TICKS = 19;
+	private static final long SWAP_TIMEOUT_TICKS = 80L;
 	private static final String OVERLAY_TEXT = "Equiping Wardrobe";
 
 	private static int cwid = -1;
@@ -31,7 +37,12 @@ public final class WardrobeKeybinds {
 	private static boolean awaitingWardrobe;
 	private static boolean clickSlotRegistered;
 	private static boolean overlayRegistered;
+	private static boolean overlaySoundPlayed;
 	private static boolean initialized;
+	private static boolean swapInProgress;
+	private static boolean swapClickSent;
+	private static long swapStartTick = -1L;
+	private static Consumer<Boolean> swapCompletion;
 
 	private WardrobeKeybinds() {
 	}
@@ -42,68 +53,67 @@ public final class WardrobeKeybinds {
 		}
 		initialized = true;
 
-		FakeKeybinds.onKeyPress(UiDefinitions.WD_ONE_KEYBIND, () -> {
-			wardrobe();
-			index = 36;
-		});
-		FakeKeybinds.onKeyPress(UiDefinitions.WD_TWO_KEYBIND, () -> {
-			wardrobe();
-			index = 37;
-		});
-		FakeKeybinds.onKeyPress(UiDefinitions.WD_THREE_KEYBIND, () -> {
-			wardrobe();
-			index = 38;
-		});
-		FakeKeybinds.onKeyPress(UiDefinitions.WD_FOUR_KEYBIND, () -> {
-			wardrobe();
-			index = 39;
-		});
-		FakeKeybinds.onKeyPress(UiDefinitions.WD_FIVE_KEYBIND, () -> {
-			wardrobe();
-			index = 40;
-		});
-		FakeKeybinds.onKeyPress(UiDefinitions.WD_SIX_KEYBIND, () -> {
-			wardrobe();
-			index = 41;
-		});
-		FakeKeybinds.onKeyPress(UiDefinitions.WD_SEVEN_KEYBIND, () -> {
-			wardrobe();
-			index = 42;
-		});
-		FakeKeybinds.onKeyPress(UiDefinitions.WD_EIGHT_KEYBIND, () -> {
-			wardrobe();
-			index = 43;
-		});
-		FakeKeybinds.onKeyPress(UiDefinitions.WD_NINE_KEYBIND, () -> {
-			wardrobe();
-			index = 55;
-		});
-
-		ClientTickEvents.END_CLIENT_TICK.register(WardrobeKeybinds::handleClientTick);
 		HudElementRegistry.attachElementBefore(
 				VanillaHudElements.SUBTITLES,
 				Identifier.fromNamespaceAndPath("moissanite", "wardrobe_overlay"),
 				(graphics, tickCounter) -> renderOverlay(graphics));
+
+		FakeKeybinds.onKeyPress(UiDefinitions.WD_ONE_KEYBIND, () -> requestSwapSlot(1, null));
+		FakeKeybinds.onKeyPress(UiDefinitions.WD_TWO_KEYBIND, () -> requestSwapSlot(2, null));
+		FakeKeybinds.onKeyPress(UiDefinitions.WD_THREE_KEYBIND, () -> requestSwapSlot(3, null));
+		FakeKeybinds.onKeyPress(UiDefinitions.WD_FOUR_KEYBIND, () -> requestSwapSlot(4, null));
+		FakeKeybinds.onKeyPress(UiDefinitions.WD_FIVE_KEYBIND, () -> requestSwapSlot(5, null));
+		FakeKeybinds.onKeyPress(UiDefinitions.WD_SIX_KEYBIND, () -> requestSwapSlot(6, null));
+		FakeKeybinds.onKeyPress(UiDefinitions.WD_SEVEN_KEYBIND, () -> requestSwapSlot(7, null));
+		FakeKeybinds.onKeyPress(UiDefinitions.WD_EIGHT_KEYBIND, () -> requestSwapSlot(8, null));
+		FakeKeybinds.onKeyPress(UiDefinitions.WD_NINE_KEYBIND, () -> requestSwapSlot(9, null));
+
+		ClientTickEvents.END_CLIENT_TICK.register(WardrobeKeybinds::handleClientTick);
 	}
 
-	private static void wardrobe() {
+	public static boolean requestSwapSlot(int slot, Consumer<Boolean> completion) {
+		int menuSlot = menuSlotForWardrobeSlot(slot);
+		if (menuSlot == -1) {
+			complete(completion, false);
+			return false;
+		}
+		if (swapInProgress) {
+			complete(completion, false);
+			return false;
+		}
+
+		index = menuSlot;
+		swapInProgress = true;
+		swapClickSent = false;
+		swapStartTick = tickIndex;
+		swapCompletion = completion;
+		if (!wardrobe()) {
+			finishSwap(false);
+			return false;
+		}
+		return true;
+	}
+
+	private static boolean wardrobe() {
 		if (wardrobeCooldown) {
-			return;
+			return false;
 		}
 		if (index <= 0) {
-			return;
+			return false;
 		}
 		Minecraft client = Minecraft.getInstance();
 		if (client == null || client.player == null || client.level == null || client.player.connection == null) {
-			return;
+			return false;
 		}
 
 		wardrobeCooldown = true;
 		awaitingWardrobe = true;
 		clickSlotRegistered = true;
 		overlayRegistered = true;
+		overlaySoundPlayed = false;
 		cooldownTicks = COOLDOWN_TICKS;
 		client.player.connection.sendCommand("wardrobe");
+		return true;
 	}
 
 	private static void handleClientTick(Minecraft client) {
@@ -113,6 +123,9 @@ public final class WardrobeKeybinds {
 			if (cooldownTicks == 0) {
 				wardrobeCooldown = false;
 			}
+		}
+		if (swapInProgress && swapStartTick != -1L && tickIndex - swapStartTick > SWAP_TIMEOUT_TICKS) {
+			finishSwap(false);
 		}
 		if (closeContainerId != -1 && closeAtTick != -1 && tickIndex >= closeAtTick) {
 			sendClosePacket(closeContainerId);
@@ -135,7 +148,11 @@ public final class WardrobeKeybinds {
 
 		awaitingWardrobe = false;
 		cwid = packet.getContainerId();
-		click(index);
+		if (!click(index)) {
+			finishSwap(false);
+			return false;
+		}
+		swapClickSent = true;
 		clickSlotRegistered = false;
 		overlayRegistered = false;
 		closeContainerId = cwid;
@@ -145,10 +162,16 @@ public final class WardrobeKeybinds {
 
 	public static void onClosePacketSent() {
 		cwid = -1;
+		if (swapInProgress && swapClickSent) {
+			finishSwap(true);
+		}
 	}
 
 	public static void onClosePacketReceived() {
 		cwid = -1;
+		if (swapInProgress && swapClickSent) {
+			finishSwap(true);
+		}
 	}
 
 	private static boolean click(int slot) {
@@ -179,6 +202,47 @@ public final class WardrobeKeybinds {
 		client.getConnection().send(new ServerboundContainerClosePacket(containerId));
 	}
 
+	private static int menuSlotForWardrobeSlot(int slot) {
+		return switch (slot) {
+			case 1 -> 36;
+			case 2 -> 37;
+			case 3 -> 38;
+			case 4 -> 39;
+			case 5 -> 40;
+			case 6 -> 41;
+			case 7 -> 42;
+			case 8 -> 43;
+			case 9 -> 55;
+			default -> -1;
+		};
+	}
+
+	private static void finishSwap(boolean success) {
+		Consumer<Boolean> callback = swapCompletion;
+		swapCompletion = null;
+		swapInProgress = false;
+		swapClickSent = false;
+		swapStartTick = -1L;
+		awaitingWardrobe = false;
+		clickSlotRegistered = false;
+		overlayRegistered = false;
+		closeAtTick = -1L;
+		closeContainerId = -1;
+		cwid = -1;
+		overlaySoundPlayed = false;
+		complete(callback, success);
+	}
+
+	private static void complete(Consumer<Boolean> callback, boolean success) {
+		if (callback == null) {
+			return;
+		}
+		try {
+			callback.accept(success);
+		} catch (Exception ignored) {
+		}
+	}
+
 	private static void renderOverlay(GuiGraphics graphics) {
 		if (!overlayRegistered || graphics == null) {
 			return;
@@ -188,16 +252,12 @@ public final class WardrobeKeybinds {
 			return;
 		}
 
-		float scale = 1.5f;
-		graphics.pose().pushMatrix();
-		graphics.pose().scale(scale, scale);
-
-		int screenWidth = client.getWindow().getGuiScaledWidth();
-		int screenHeight = client.getWindow().getGuiScaledHeight();
-		int x = Math.round((screenWidth / scale - client.font.width(OVERLAY_TEXT)) / 2.0f);
-		int y = Math.round(screenHeight / scale / 2.0f + 16.0f);
-
-		graphics.drawString(client.font, OVERLAY_TEXT, x, y, 0xFFFFFF, true);
-		graphics.pose().popMatrix();
+		client.gui.setTimes(0, 20, 0);
+		client.gui.setSubtitle(Component.empty());
+		client.gui.setTitle(Component.literal("Changing").withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD));
+		if (!overlaySoundPlayed && client.player != null) {
+			client.player.playSound(SoundEvents.EXPERIENCE_ORB_PICKUP, 1.5F, 1.0F);
+			overlaySoundPlayed = true;
+		}
 	}
 }

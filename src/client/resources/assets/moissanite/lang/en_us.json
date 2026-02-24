@@ -1,3 +1,15 @@
 {
-  "key.category.moissanite.moissanite": "Moissanite"
+  "key.category.moissanite.moissanite": "Moissanite",
+  "moissanite.spoofer.toast.server_attempted_reading_mods": "Server attempted to read hidden mod text.",
+  "moissanite.spoofer.options.title": "Client Spoofer",
+  "moissanite.spoofer.option.spoof_mode": "Spoof mode",
+  "moissanite.spoofer.option.spoof_mode.vanilla": "Vanilla",
+  "moissanite.spoofer.option.spoof_mode.modded": "Modded",
+  "moissanite.spoofer.option.spoof_mode.custom": "Custom",
+  "moissanite.spoofer.option.spoof_mode.off": "Off",
+  "moissanite.spoofer.option.custom_client": "Custom client brand",
+  "moissanite.spoofer.option.hide_mods": "Hide mod resources",
+  "moissanite.spoofer.option.allowed_mods": "Allowed mods (comma separated)",
+  "moissanite.spoofer.option.disable_custom_payloads": "Disable custom payloads",
+  "moissanite.spoofer.option.allowed_custom_payload_channels": "Allowed payload channels (comma/newline separated)"
 }

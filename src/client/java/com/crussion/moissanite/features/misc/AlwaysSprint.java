@@ -26,7 +26,16 @@ public final class AlwaysSprint {
 		if (!Boolean.TRUE.equals(UiDefinitions.ALWAYS_SPRINT.get())) {
 			return;
 		}
-		boolean shouldSprint = client.options.keyUp.isDown() && !client.player.isCrouching();
-		client.player.setSprinting(shouldSprint);
+
+		boolean shiftHeld = client.player.input != null
+			? client.player.input.keyPresses.shift()
+			: client.player.isShiftKeyDown();
+		boolean hasForwardImpulse = client.player.input != null && client.player.input.hasForwardImpulse();
+		boolean shouldSprint = hasForwardImpulse
+			&& !shiftHeld
+			&& !client.player.isMovingSlowly();
+		if (client.player.isSprinting() != shouldSprint) {
+			client.player.setSprinting(shouldSprint);
+		}
 	}
 }

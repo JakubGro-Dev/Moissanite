@@ -1,13 +1,16 @@
 package com.crussion.moissanite.command;
 
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.argument;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.literal;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import com.crussion.moissanite.features.cheats.AutoRendHelper;
 import com.crussion.moissanite.ui.UiEntrypoints;
 import com.crussion.moissanite.ui.navigation.ScreenIds;
+import com.mojang.brigadier.arguments.DoubleArgumentType;
 
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
@@ -22,6 +25,7 @@ public final class MoissaniteCommands {
 		ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
 			registerRoot(dispatcher, "moissanite");
 			registerRoot(dispatcher, "mois");
+			registerRotate(dispatcher);
 		});
 	}
 
@@ -29,7 +33,34 @@ public final class MoissaniteCommands {
 		dispatcher.register(literal(root)
 				.executes(context -> openGui(context.getSource()))
 				.then(literal("files")
-						.executes(context -> openConfigFolder(context.getSource()))));
+						.executes(context -> openConfigFolder(context.getSource())))
+				.then(literal("lc")
+						.executes(context -> leftClick(context.getSource())))
+				.then(literal("rc")
+						.executes(context -> rightClick(context.getSource()))));
+	}
+
+	private static void registerRotate(com.mojang.brigadier.CommandDispatcher<FabricClientCommandSource> dispatcher) {
+		dispatcher.register(literal("rotate")
+				.then(argument("a", DoubleArgumentType.doubleArg())
+						.then(argument("b", DoubleArgumentType.doubleArg())
+								.executes(context -> rotateYawPitch(
+										context.getSource(),
+										DoubleArgumentType.getDouble(context, "a"),
+										DoubleArgumentType.getDouble(context, "b")))
+								.then(argument("c", DoubleArgumentType.doubleArg())
+										.executes(context -> rotateYawPitchWithMultiplier(
+												context.getSource(),
+												DoubleArgumentType.getDouble(context, "a"),
+												DoubleArgumentType.getDouble(context, "b"),
+												DoubleArgumentType.getDouble(context, "c")))
+										.then(argument("d", DoubleArgumentType.doubleArg())
+												.executes(context -> rotateXYZWithMultiplier(
+														context.getSource(),
+														DoubleArgumentType.getDouble(context, "a"),
+														DoubleArgumentType.getDouble(context, "b"),
+														DoubleArgumentType.getDouble(context, "c"),
+														DoubleArgumentType.getDouble(context, "d"))))))));
 	}
 
 	private static int openGui(FabricClientCommandSource source) {
@@ -45,6 +76,36 @@ public final class MoissaniteCommands {
 		}
 
 		source.getClient().execute(() -> Util.getPlatform().openPath(configDir));
+		return 1;
+	}
+
+	private static int rotateXYZ(FabricClientCommandSource source, double x, double y, double z) {
+		source.getClient().execute(() -> AutoRendHelper.Rotate(x, y, z));
+		return 1;
+	}
+
+	private static int rotateXYZWithMultiplier(FabricClientCommandSource source, double x, double y, double z, double multiplier) {
+		source.getClient().execute(() -> AutoRendHelper.Rotate(x, y, z, multiplier));
+		return 1;
+	}
+
+	private static int rotateYawPitch(FabricClientCommandSource source, double yaw, double pitch) {
+		source.getClient().execute(() -> AutoRendHelper.Rotate(yaw, pitch));
+		return 1;
+	}
+
+	private static int rotateYawPitchWithMultiplier(FabricClientCommandSource source, double yaw, double pitch, double multiplier) {
+		source.getClient().execute(() -> AutoRendHelper.RotateYawPitch(yaw, pitch, multiplier));
+		return 1;
+	}
+
+	private static int leftClick(FabricClientCommandSource source) {
+		source.getClient().execute(AutoRendHelper::LC);
+		return 1;
+	}
+
+	private static int rightClick(FabricClientCommandSource source) {
+		source.getClient().execute(AutoRendHelper::RC);
 		return 1;
 	}
 }
