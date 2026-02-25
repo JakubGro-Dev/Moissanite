@@ -17,8 +17,8 @@ More features in game
 ### General
 
 ### Dungeons
-- Auto Terminals *(SOON)*
-- Auto Terms Inv Walk *(SOON)*
+- Auto Terminals
+- Auto Terms Inv Walk
 
 ### Visual
 - Image on screen
@@ -42,7 +42,7 @@ More features in game
 	**Requires up-to-date setup. I have only mentioned stuff used by macro.**
 
   	!! 2 METHODS OF AUTO REND. BOTH SAFE !!
-	> AutoRend -> uses better method of autorend, not tested in performance. Uses static values for 0 tick security. Works as fast and safe as possible. Little slow while waiting for backbone. Feel free to share backbone detection method. Old methods dont work due to changes in strat.
+	> AutoRend (Recommended) -> uses better method of autorend, not tested in performance. Uses static values for 0 tick security. Works as fast and safe as possible. Little slow while waiting for backbone. Feel free to share backbone detection method. Old methods dont work due to changes in strat.
  
  	> AutoRendHardcoded -> Uses my method from over a year ago. I would say it performs better. Its slower but does the job. Might improve it little bit.
  	
@@ -59,6 +59,8 @@ More features in game
 - <details><summary>Auto Pearl</summary>
 
 	While picking up crate automatically on time throws pearl into pre spot.
+
+	<img width="60%" src="https://i.imgur.com/07IwD5T.gif">
 </details>
 
 - Auto Experimentation
