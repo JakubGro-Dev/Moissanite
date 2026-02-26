@@ -5,20 +5,22 @@ import java.util.List;
 
 import com.crussion.moissanite.definitions.UiDefinitions;
 import com.crussion.moissanite.ui.layout.Layouts;
+import com.crussion.moissanite.ui.render.UiShapes;
+import com.crussion.moissanite.ui.render.UiTextRenderer;
 import com.crussion.moissanite.ui.screen.overlay.OverlayRightPanel;
 import com.crussion.moissanite.ui.screen.overlay.UiEntryWidgetFactory;
 import com.crussion.moissanite.ui.state.UiState;
 import com.crussion.moissanite.ui.state.UiStore;
 import com.crussion.moissanite.ui.style.Colors;
 import com.crussion.moissanite.ui.style.Theme;
+import com.crussion.moissanite.ui.widget.ColorSelectorWidget;
+import com.crussion.moissanite.ui.widget.DropdownWidget;
 import com.crussion.moissanite.ui.widget.IconButton;
 import com.crussion.moissanite.ui.widget.ListView;
 import com.crussion.moissanite.ui.widget.RoundedEditBox;
 import com.crussion.moissanite.ui.text.UiText;
 import com.crussion.moissanite.ui.data.UiCatalog;
 import com.crussion.moissanite.ui.data.UiCategory;
-import com.crussion.moissanite.ui.data.UiEntry;
-import com.crussion.moissanite.ui.data.UiSection;
 import com.crussion.moissanite.input.UiKeybinds;
 import com.crussion.moissanite.ui.widget.KeybindWidget;
 
@@ -76,7 +78,7 @@ public class InventoryOverlayScreen extends BaseScreen {
 			searchQuery = sanitizeSearchQuery(value);
 			rebuildRightPanel();
 		});
-		this.searchBox.setCentered(true);
+		this.searchBox.setCentered(false);
 		this.searchBox.setTextColor(Colors.TEXT_PRIMARY);
 		this.searchBox.setBordered(false);
 		this.searchBox.setHint(UiText.uiText("Search"));
@@ -91,11 +93,11 @@ public class InventoryOverlayScreen extends BaseScreen {
 		this.selectionList.setBounds(listBox.x(), listBox.y(), listBox.width(), listBox.height());
 		this.selectionList.setItems(categoryLabels());
 		this.selectionList.setVisibleOnlyWhenScrollable(false);
-		this.selectionList.setCentered(true);
+		this.selectionList.setCentered(false);
 		this.selectionList.setBold(true);
-		this.selectionList.setItemHeight(Math.max(Theme.LIST_ITEM_HEIGHT, this.font.lineHeight + 6));
-		this.selectionList.setTextScale(1.08f);
-		this.selectionList.setSelectedScale(1.18f);
+		this.selectionList.setItemHeight(Math.max(Theme.LIST_ITEM_HEIGHT, this.font.lineHeight + 10));
+		this.selectionList.setTextScale(1.0f);
+		this.selectionList.setSelectedScale(1.0f);
 		this.selectionList.setScrollOffset(cachedState.leftListScroll());
 		if (this.showingSettings) {
 			this.selectionList.clearSelection();
@@ -104,8 +106,8 @@ public class InventoryOverlayScreen extends BaseScreen {
 		}
 		this.lastCategoryIndex = this.selectionList.getSelectedIndex();
 		this.rightPanel.setContentScroll(cachedState.rightPanelScroll());
-
 		this.lastVisibilitySignature = visibilitySignature();
+
 		rebuildRightPanel();
 	}
 
@@ -131,6 +133,7 @@ public class InventoryOverlayScreen extends BaseScreen {
 
 		this.selectionList.render(graphics, this.font, mouseX, mouseY);
 		rightPanel.renderLabels(graphics, this.font, layout);
+		renderPopupOverlays(graphics, mouseX, mouseY);
 	}
 
 	@Override
@@ -140,7 +143,11 @@ public class InventoryOverlayScreen extends BaseScreen {
 			saveUiCache();
 			return true;
 		}
-		return super.mouseClicked(event, focused);
+		boolean handled = super.mouseClicked(event, focused);
+		if (!handled && closeAnyOpenPopups()) {
+			return true;
+		}
+		return handled;
 	}
 
 	@Override
@@ -201,12 +208,36 @@ public class InventoryOverlayScreen extends BaseScreen {
 			return;
 		}
 		Layouts.Rect left = layout.left();
-		graphics.fill(left.x(), left.y(), left.right(), left.bottom(), Colors.LEFT_BG);
+		UiShapes.fillRoundedOutline(
+				graphics,
+				left.x(),
+				left.y(),
+				left.width(),
+				left.height(),
+				Theme.SECTION_RADIUS,
+				1,
+				Colors.SECTION_OUTLINE,
+				Colors.LEFT_BG
+		);
+		UiShapes.fillRoundedRect(graphics, left.x() + 2, left.y() + 2, left.width() - 4, 1, Math.max(0, Theme.SECTION_RADIUS - 2), Colors.PANEL_HIGHLIGHT);
 		Layouts.Rect right = layout.right();
-		graphics.fill(right.x(), right.y(), right.right(), right.bottom(), Colors.RIGHT_BG);
+		UiShapes.fillRoundedOutline(
+				graphics,
+				right.x(),
+				right.y(),
+				right.width(),
+				right.height(),
+				Theme.SECTION_RADIUS,
+				1,
+				Colors.SECTION_OUTLINE_NESTED,
+				Colors.RIGHT_BG
+		);
+		UiShapes.fillRoundedRect(graphics, right.x() + 2, right.y() + 2, right.width() - 4, 1, Math.max(0, Theme.SECTION_RADIUS - 2), Colors.PANEL_HIGHLIGHT);
+		rightPanel.renderSectionBackgrounds(graphics, layout);
 
 		int dividerX = left.right() + (Theme.SECTION_GAP / 2);
-		graphics.fill(dividerX, left.y(), dividerX + 1, left.bottom(), Colors.DIVIDER);
+		UiShapes.fillRoundedRect(graphics, dividerX, left.y() + 8, 1, left.height() - 16, 1, Colors.DIVIDER);
+		UiShapes.fillRoundedRect(graphics, dividerX - 1, left.y() + 12, 3, left.height() - 24, 1, Colors.DIVIDER_GLOW);
 	}
 
 	@Override
@@ -254,15 +285,10 @@ public class InventoryOverlayScreen extends BaseScreen {
 
 	private void drawTitle(GuiGraphics graphics, Layouts.Layout layout) {
 		Layouts.Rect left = layout.left();
-		Layouts.Rect titleArea = layout.input();
-		float scale = 1.5f;
-		graphics.pose().pushMatrix();
-		graphics.pose().scale(scale, scale);
-		int centerX = (int) ((left.x() + left.width() / 2f) / scale);
-		int titleY = (int) ((titleArea.y() + 4) / scale);
-		Component title = UiText.uiText("Moissanite Client");
-		graphics.drawCenteredString(this.font, title, centerX, titleY, Colors.TEXT_PRIMARY);
-		graphics.pose().popMatrix();
+		int titleX = left.x() + Theme.INNER_PADDING;
+		int titleY = left.y() + Theme.INNER_PADDING;
+		UiTextRenderer.drawBoldString(graphics, this.font, UiText.uiText("MOISSANITE"), titleX, titleY, Colors.TEXT_PRIMARY, 1.24f);
+		graphics.drawString(this.font, UiText.uiText("Client Modules"), titleX, titleY + this.font.lineHeight + 5, Colors.TEXT_MUTED, false);
 	}
 
 	private static boolean isInside(double mouseX, double mouseY, int x, int y, int width, int height) {
@@ -293,15 +319,42 @@ public class InventoryOverlayScreen extends BaseScreen {
 		return false;
 	}
 
+	private boolean closeAnyOpenPopups() {
+		boolean closed = false;
+		for (var child : this.children()) {
+			if (child instanceof DropdownWidget dropdownWidget && dropdownWidget.isExpanded()) {
+				dropdownWidget.closeDropdown();
+				closed = true;
+			}
+			if (child instanceof ColorSelectorWidget colorSelectorWidget && colorSelectorWidget.isExpanded()) {
+				colorSelectorWidget.closeSelector();
+				closed = true;
+			}
+		}
+		return closed;
+	}
+
+	private void renderPopupOverlays(GuiGraphics graphics, int mouseX, int mouseY) {
+		for (var child : this.children()) {
+			if (child instanceof DropdownWidget dropdownWidget) {
+				dropdownWidget.renderOverlay(graphics, mouseX, mouseY);
+			}
+			if (child instanceof ColorSelectorWidget colorSelectorWidget) {
+				colorSelectorWidget.renderOverlay(graphics, mouseX, mouseY);
+			}
+		}
+	}
+
 	private static int visibilitySignature() {
 		int signature = 1;
-		for (UiCategory category : UiCatalog.categories()) {
-			for (UiSection section : category.sections()) {
-				for (UiEntry<?> entry : section.entries()) {
+		for (var category : UiCatalog.categories()) {
+			for (var section : category.sections()) {
+				for (var entry : section.entries()) {
 					signature = 31 * signature + (entry.isVisible() ? 1 : 0);
 				}
 			}
 		}
 		return signature;
 	}
+
 }

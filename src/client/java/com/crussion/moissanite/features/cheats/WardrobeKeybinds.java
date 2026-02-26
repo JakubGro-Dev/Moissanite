@@ -189,8 +189,7 @@ public final class WardrobeKeybinds {
 				(byte) 0,
 				ClickType.PICKUP,
 				new Int2ObjectOpenHashMap<>(),
-				HashedStack.EMPTY
-		));
+				HashedStack.EMPTY));
 		return true;
 	}
 
@@ -244,7 +243,7 @@ public final class WardrobeKeybinds {
 	}
 
 	private static void renderOverlay(GuiGraphics graphics) {
-		if (!overlayRegistered || graphics == null) {
+		if (!swapInProgress || graphics == null) {
 			return;
 		}
 		Minecraft client = Minecraft.getInstance();

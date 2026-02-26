@@ -82,7 +82,7 @@ public final class AutoRend {
 	}
 
 	private static void handleClientTick(Minecraft client) {
-		if (Boolean.TRUE.equals(UiDefinitions.AUTO_REND_HARDCODE.get())) {
+		if (!Boolean.TRUE.equals(UiDefinitions.AUTO_REND_HARDCODE.get())) {
 			return;
 		}
 
@@ -118,7 +118,7 @@ public final class AutoRend {
 	}
 
 	private static void triggerManual() {
-		if (Boolean.TRUE.equals(UiDefinitions.AUTO_REND_HARDCODE.get())) {
+		if (!Boolean.TRUE.equals(UiDefinitions.AUTO_REND_HARDCODE.get())) {
 			return;
 		}
 		if (!Boolean.TRUE.equals(UiDefinitions.AUTO_REND_DEBUG.get())) {
@@ -146,7 +146,7 @@ public final class AutoRend {
 		if (context == null || context.matrices() == null || context.consumers() == null) {
 			return;
 		}
-		if (Boolean.TRUE.equals(UiDefinitions.AUTO_REND_HARDCODE.get())) {
+		if (!Boolean.TRUE.equals(UiDefinitions.AUTO_REND_HARDCODE.get())) {
 			return;
 		}
 		Minecraft client = Minecraft.getInstance();
@@ -289,7 +289,7 @@ public final class AutoRend {
 		sendAutoRendMessage("Swap to Bonemerang (slot " + slot + "): " + actionStatus(swapped));
 
 		scheduleStep(sequenceGeneration, 1, () -> verifyHeldItem("Verify Bonemerang equipped", BONEMERANG_ID));
-		scheduleStep(sequenceGeneration, 1, AutoRend::stepUseBonemerang);
+		scheduleStep(sequenceGeneration, 2, AutoRend::stepUseBonemerang);
 	}
 
 	private static void stepUseBonemerang() {
@@ -298,7 +298,7 @@ public final class AutoRend {
 		boolean jumped = PlayerInputActions.jump();
 		sendAutoRendMessage("Jump: " + actionStatus(jumped));
 
-		scheduleStep(sequenceGeneration, 6, AutoRend::stepSwapAtomsplit);
+		scheduleStep(sequenceGeneration, 4, AutoRend::stepSwapAtomsplit);
 	}
 
 	private static void stepSwapAtomsplit() {
@@ -313,7 +313,7 @@ public final class AutoRend {
 			armorSwapResolved = true;
 			armorSwapSucceeded = success;
 		});
-		scheduleStep(sequenceGeneration, 24, AutoRend::stepSwapEndstone);
+		scheduleStep(sequenceGeneration, 26, AutoRend::stepSwapEndstone);
 	}
 
 	private static void stepSwapEndstone() {
@@ -345,6 +345,13 @@ public final class AutoRend {
 		boolean pull = PlayerInputActions.leftClick();
 		sendAutoRendMessage("Left click pull: " + actionStatus(pull));
 
+		scheduleStep(sequenceGeneration, 2, AutoRend::stepPullBonemerangAgain);
+	}
+
+	private static void stepPullBonemerangAgain() {
+		boolean pull = PlayerInputActions.leftClick();
+		sendAutoRendMessage("Left click pull: " + actionStatus(pull));
+
 		scheduleStep(sequenceGeneration, 3, AutoRend::stepRotateToPearlPoint);
 	}
 
@@ -362,7 +369,7 @@ public final class AutoRend {
 		sendAutoRendMessage("Swap to Pearls (slot " + slot + "): " + actionStatus(swapped));
 
 		scheduleStep(sequenceGeneration, 4, () -> verifyHeldItem("Verify Pearls equipped", PEARL_ID));
-		scheduleStep(sequenceGeneration, 5, AutoRend::stepThrowPearl);
+		scheduleStep(sequenceGeneration, 9, AutoRend::stepThrowPearl);
 	}
 
 	private static void stepThrowPearl() {

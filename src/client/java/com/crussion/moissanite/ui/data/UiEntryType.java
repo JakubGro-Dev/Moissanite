@@ -6,6 +6,7 @@ public enum UiEntryType {
 	DROPDOWN,
 	INPUT,
 	SLIDER,
+	COLOR,
 	NUMBER,
 	KEYBIND
 }

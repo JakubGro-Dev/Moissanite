@@ -15,6 +15,7 @@ import com.crussion.moissanite.features.cheats.AutoRend;
 import com.crussion.moissanite.features.cheats.AutoRend_Reworked;
 import com.crussion.moissanite.features.cheats.KuudraPosTracker;
 import com.crussion.moissanite.features.cheats.WardrobeKeybinds;
+import com.crussion.moissanite.features.dungeons.terminals.DungeonsTerminals;
 import com.crussion.moissanite.features.misc.AlwaysSprint;
 import com.crussion.moissanite.features.visual.KuudraEsp;
 import com.crussion.moissanite.features.misc.WindowNameChanger;
@@ -29,6 +30,7 @@ import com.crussion.moissanite.features.kuudra.KuudraSplits;
 import com.crussion.moissanite.features.kuudra.KuudraBossHp;
 import com.crussion.moissanite.features.kuudra.KuudraCubeHpTag;
 import com.crussion.moissanite.features.kuudra.KuudraSupplyWaypoints;
+import com.crussion.moissanite.update.ModUpdater;
 
 public class MoissaniteClient implements ClientModInitializer {
 	@Override
@@ -36,6 +38,7 @@ public class MoissaniteClient implements ClientModInitializer {
 		UiDefinitions.init();
 		WindowNameChanger.init();
 		MoissaniteConfig.init();
+		ModUpdater.init();
 		ClientSpoofer.init();
 		UiEntrypoints.init();
 		MoissaniteCommands.init();
@@ -59,6 +62,7 @@ public class MoissaniteClient implements ClientModInitializer {
 		AutoRend_Reworked.init();
 		AlwaysSprint.init();
 		RenderImageOnScreen.init();
+		DungeonsTerminals.init();
 		StorageOverlayFeature.init();
 	}
 }

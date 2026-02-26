@@ -8,6 +8,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.ItemInHandRenderer;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
@@ -17,7 +18,6 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
@@ -47,13 +47,15 @@ public abstract class ItemInHandRendererMixin {
 
 	@Shadow
 	public abstract void renderItem(
-		LivingEntity entity,
-		ItemStack stack,
-		ItemDisplayContext displayContext,
-		PoseStack poseStack,
-		SubmitNodeCollector submitNodeCollector,
-		int packedLight
-	);
+			LivingEntity entity,
+			ItemStack stack,
+			ItemDisplayContext displayContext,
+			PoseStack poseStack,
+			SubmitNodeCollector submitNodeCollector,
+			int packedLight);
+
+	@Shadow
+	protected abstract void applyItemArmAttackTransform(PoseStack poseStack, HumanoidArm arm, float swingProgress);
 
 	@Inject(method = "tick", at = @At("HEAD"), cancellable = true)
 	private void moissanite$preventEquipReset(CallbackInfo ci) {
@@ -80,22 +82,15 @@ public abstract class ItemInHandRendererMixin {
 		}
 	}
 
-	@Redirect(
-		method = "renderArmWithItem",
-		at = @At(
-			value = "INVOKE",
-			target = "Lnet/minecraft/client/renderer/ItemInHandRenderer;renderItem(Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/item/ItemDisplayContext;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;I)V"
-		)
-	)
+	@Redirect(method = "renderArmWithItem", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/ItemInHandRenderer;renderItem(Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/item/ItemDisplayContext;Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/SubmitNodeCollector;I)V"))
 	private void moissanite$renderItemWithDeferredScale(
-		ItemInHandRenderer instance,
-		LivingEntity entity,
-		ItemStack stack,
-		ItemDisplayContext displayContext,
-		PoseStack poseStack,
-		SubmitNodeCollector submitNodeCollector,
-		int packedLight
-	) {
+			ItemInHandRenderer instance,
+			LivingEntity entity,
+			ItemStack stack,
+			ItemDisplayContext displayContext,
+			PoseStack poseStack,
+			SubmitNodeCollector submitNodeCollector,
+			int packedLight) {
 		if (!moissanite$hasItemVisualTransform()) {
 			renderItem(entity, stack, displayContext, poseStack, submitNodeCollector, packedLight);
 			return;
@@ -106,67 +101,28 @@ public abstract class ItemInHandRendererMixin {
 		poseStack.popPose();
 	}
 
-	@ModifyArg(
-		method = "swingArm",
-		at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/vertex/PoseStack;translate(FFF)V"),
-		index = 0
-	)
-	private float moissanite$scaleSwingTranslateX(float x) {
-		return x * moissanite$getSwingScale();
-	}
+	@Inject(method = "swingArm", at = @At("HEAD"), cancellable = true)
+	private void moissanite$applyCustomSwing(
+			float swingProgress,
+			PoseStack poseStack,
+			int handDir,
+			HumanoidArm arm,
+			CallbackInfo ci) {
+		if (!HandVisualTweaks.customSwingAnimation()) {
+			return;
+		}
 
-	@ModifyArg(
-		method = "swingArm",
-		at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/vertex/PoseStack;translate(FFF)V"),
-		index = 1
-	)
-	private float moissanite$scaleSwingTranslateY(float y) {
-		return y * moissanite$getSwingScale();
-	}
+		float angle = swingProgress * ((float) Math.PI * 2.0F); // 0 to 2PI
+		// The cone path
+		float coneZ = net.minecraft.util.Mth.sin(angle) * 30.0F; // Rolls left and right
+		float coneX = (net.minecraft.util.Mth.cos(angle) - 1.0F) * 30.0F; // Pitches forward and back
 
-	@ModifyArg(
-		method = "swingArm",
-		at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/vertex/PoseStack;translate(FFF)V"),
-		index = 2
-	)
-	private float moissanite$scaleSwingTranslateZ(float z) {
-		return z * moissanite$getSwingScale();
-	}
+		poseStack.translate(0.0F, -1.0F, 0.0F); // Pivot at the bottom
+		poseStack.mulPose(com.mojang.math.Axis.XP.rotationDegrees(coneX));
+		poseStack.mulPose(com.mojang.math.Axis.ZP.rotationDegrees((float) handDir * coneZ));
+		poseStack.translate(0.0F, 1.0F, 0.0F); // Translate back
 
-	@ModifyArg(
-		method = "applyItemArmAttackTransform",
-		at = @At(value = "INVOKE", target = "Lcom/mojang/math/Axis;rotationDegrees(F)Lorg/joml/Quaternionf;", ordinal = 0),
-		index = 0
-	)
-	private float moissanite$scaleSwingAttackRot0(float angle) {
-		return angle * moissanite$getSwingScale();
-	}
-
-	@ModifyArg(
-		method = "applyItemArmAttackTransform",
-		at = @At(value = "INVOKE", target = "Lcom/mojang/math/Axis;rotationDegrees(F)Lorg/joml/Quaternionf;", ordinal = 1),
-		index = 0
-	)
-	private float moissanite$scaleSwingAttackRot1(float angle) {
-		return angle * moissanite$getSwingScale();
-	}
-
-	@ModifyArg(
-		method = "applyItemArmAttackTransform",
-		at = @At(value = "INVOKE", target = "Lcom/mojang/math/Axis;rotationDegrees(F)Lorg/joml/Quaternionf;", ordinal = 2),
-		index = 0
-	)
-	private float moissanite$scaleSwingAttackRot2(float angle) {
-		return angle * moissanite$getSwingScale();
-	}
-
-	@ModifyArg(
-		method = "applyItemArmAttackTransform",
-		at = @At(value = "INVOKE", target = "Lcom/mojang/math/Axis;rotationDegrees(F)Lorg/joml/Quaternionf;", ordinal = 3),
-		index = 0
-	)
-	private float moissanite$scaleSwingAttackRot3(float angle) {
-		return angle * moissanite$getSwingScale();
+		ci.cancel();
 	}
 
 	@Unique
@@ -188,12 +144,4 @@ public abstract class ItemInHandRendererMixin {
 		}
 	}
 
-	@Unique
-	private static float moissanite$getSwingScale() {
-		if (!HandVisualTweaks.scaleSwingWithHandSize()) {
-			return 1.0f;
-		}
-		double rawScale = Math.abs(1.0 + HandVisualTweaks.handSizeOffset());
-		return (float) Math.max(0.0, rawScale);
-	}
 }

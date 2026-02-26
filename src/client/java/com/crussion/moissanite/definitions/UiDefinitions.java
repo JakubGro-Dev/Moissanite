@@ -6,8 +6,10 @@ import com.crussion.moissanite.features.cheats.AutoRend_Reworked;
 import com.crussion.moissanite.features.cheats.KuudraPosTracker;
 import com.crussion.moissanite.features.visual.RenderImageOnScreen;
 import com.crussion.moissanite.features.visual.storage.StorageOverlayFeature;
+import com.crussion.moissanite.update.ModUpdater;
 import com.crussion.moissanite.ui.data.UiCatalog;
 import com.crussion.moissanite.ui.data.UiCategory;
+import com.crussion.moissanite.ui.data.UiColor;
 import com.crussion.moissanite.ui.data.UiDropdown;
 import com.crussion.moissanite.ui.data.UiInput;
 import com.crussion.moissanite.ui.data.UiKeybind;
@@ -46,11 +48,150 @@ public final class UiDefinitions {
 
 	// Sections
 	public static final UiSection DUNGEONS_GENERAL = DUNGEONS.section("General");
+	public static final UiSection DUNGEONS_AUTO_TERMS_SECTION = DUNGEONS.section("Auto Terminals");
+	public static final UiSection DUNGEONS_INVWALK_SECTION = DUNGEONS.section("Invwalk");
+	public static final UiSection DUNGEONS_INVWALK_VISUALIZER_SECTION = DUNGEONS.section("Invwalk Visualizer");
 
 	// Bindables
+	public static final UiSwitch DUNGEONS_TERMINAL_AURA = DUNGEONS_AUTO_TERMS_SECTION.toggle("Terminal Aura", false);
+	public static final UiSwitch DUNGEONS_AUTO_TERMS = DUNGEONS_AUTO_TERMS_SECTION.toggle("Auto Terms", false);
+	public static final UiSlider DUNGEONS_AUTO_TERMS_CLICK_DELAY = DUNGEONS_AUTO_TERMS_SECTION.slider("Click Delay",
+			50.0, 300.0, 100.0, 1.0);
+	public static final UiSlider DUNGEONS_AUTO_TERMS_FIRST_CLICK_DELAY = DUNGEONS_AUTO_TERMS_SECTION
+			.slider("First Click Delay", 300.0, 500.0, 350.0, 1.0);
+	public static final UiSlider DUNGEONS_AUTO_TERMS_BREAK_THRESHOLD = DUNGEONS_AUTO_TERMS_SECTION
+			.slider("Break Threshold", 500.0, 1500.0, 500.0, 1.0);
+	public static final UiSwitch DUNGEONS_AUTO_TERMS_MELODY_ENABLED = DUNGEONS_AUTO_TERMS_SECTION.toggle("Melody Toggle",
+			false);
+	public static final UiDropdown DUNGEONS_AUTO_TERMS_MELODY_SKIP = DUNGEONS_AUTO_TERMS_SECTION
+			.dropdown("Melody Skip On", "Edges");
+	public static final UiSlider DUNGEONS_AUTO_TERMS_MELODY_SKIP_DELAY = DUNGEONS_AUTO_TERMS_SECTION.slider(
+			"Melody Skip Delay", 0.0, 100.0, 50.0, 1.0);
+	public static final UiSlider DUNGEONS_AUTO_TERMS_MELODY_FIRST_DELAY = DUNGEONS_AUTO_TERMS_SECTION.slider(
+			"Melody First Click Delay", 0.0, 400.0, 0.0, 1.0);
+
+	public static final UiSwitch DUNGEONS_AUTO_TERMS_INVWALK = DUNGEONS_INVWALK_SECTION.toggle("Invwalk", false);
+	public static final UiSwitch DUNGEONS_AUTO_TERMS_INVWALK_MENTAL = DUNGEONS_INVWALK_SECTION.toggle("Mental", false);
+	public static final UiSwitch DUNGEONS_AUTO_TERMS_INVWALK_MELODY = DUNGEONS_INVWALK_SECTION.toggle("Melody", false);
+	public static final UiDropdown DUNGEONS_AUTO_TERMS_INVWALK_MELODY_METHOD = DUNGEONS_INVWALK_SECTION
+			.dropdown("Melody InvWalk Method", "Blink");
+	public static final UiSwitch DUNGEONS_AUTO_TERMS_VISUALIZE_MELODY = DUNGEONS_INVWALK_SECTION
+			.toggle("Visualize Melody", false);
+	public static final UiSlider DUNGEONS_AUTO_TERMS_INVWALK_MELODY_MOVE_DELAY = DUNGEONS_INVWALK_SECTION.slider(
+			"Melody Move Delay", 0.0, 500.0, 350.0, 1.0);
+
+	public static final UiSwitch DUNGEONS_INVWALK_VISUALIZER_ENABLED = DUNGEONS_INVWALK_VISUALIZER_SECTION
+			.toggle("Visualizer Toggle", true);
+	public static final UiSlider DUNGEONS_INVWALK_VISUALIZER_SCALE = DUNGEONS_INVWALK_VISUALIZER_SECTION.slider("Scale",
+			0.25, 4.0, 1.0, 0.01);
+	public static final UiColor DUNGEONS_INVWALK_VISUALIZER_COLOR = DUNGEONS_INVWALK_VISUALIZER_SECTION
+			.color("Color", UiColor.argb(0, 255, 0, 255));
+	public static final UiColor DUNGEONS_INVWALK_VISUALIZER_BACKGROUND_COLOR = DUNGEONS_INVWALK_VISUALIZER_SECTION
+			.color("Background Color", UiColor.argb(0, 0, 0, 127));
+	public static final UiInput DUNGEONS_INVWALK_VISUALIZER_OFFSET_X = DUNGEONS_INVWALK_VISUALIZER_SECTION
+			.input("X Offset", "0");
+	public static final UiInput DUNGEONS_INVWALK_VISUALIZER_OFFSET_Y = DUNGEONS_INVWALK_VISUALIZER_SECTION
+			.input("Y Offset", "0");
+
+	public static final UiSwitch DUNGEONS_INVWALK_VISUALIZER_NUMBERS_ENABLED = DUNGEONS_INVWALK_VISUALIZER_SECTION
+			.toggle("Numbers Toggle", true);
+	public static final UiSwitch DUNGEONS_INVWALK_VISUALIZER_NUMBERS_SHOW_NUMBERS = DUNGEONS_INVWALK_VISUALIZER_SECTION
+			.toggle("Numbers Show Numbers", true);
+	public static final UiColor DUNGEONS_INVWALK_VISUALIZER_NUMBERS_COLOR1 = DUNGEONS_INVWALK_VISUALIZER_SECTION
+			.color("Numbers Color 1", UiColor.argb(0, 255, 0, 255));
+	public static final UiColor DUNGEONS_INVWALK_VISUALIZER_NUMBERS_COLOR2 = DUNGEONS_INVWALK_VISUALIZER_SECTION
+			.color("Numbers Color 2", UiColor.argb(0, 255, 0, 155));
+	public static final UiColor DUNGEONS_INVWALK_VISUALIZER_NUMBERS_COLOR3 = DUNGEONS_INVWALK_VISUALIZER_SECTION
+			.color("Numbers Color 3", UiColor.argb(0, 255, 0, 55));
+
+	public static final UiSwitch DUNGEONS_INVWALK_VISUALIZER_COLORS_ENABLED = DUNGEONS_INVWALK_VISUALIZER_SECTION
+			.toggle("Colors Toggle", true);
+	public static final UiSwitch DUNGEONS_INVWALK_VISUALIZER_STARTSWITH_ENABLED = DUNGEONS_INVWALK_VISUALIZER_SECTION
+			.toggle("Starts With Toggle", true);
+	public static final UiSwitch DUNGEONS_INVWALK_VISUALIZER_RUBIX_ENABLED = DUNGEONS_INVWALK_VISUALIZER_SECTION
+			.toggle("Rubix Toggle", true);
+	public static final UiColor DUNGEONS_INVWALK_VISUALIZER_RUBIX_LEFT_COLOR = DUNGEONS_INVWALK_VISUALIZER_SECTION
+			.color("Rubix Left Color", UiColor.argb(0, 255, 0, 255));
+	public static final UiColor DUNGEONS_INVWALK_VISUALIZER_RUBIX_RIGHT_COLOR = DUNGEONS_INVWALK_VISUALIZER_SECTION
+			.color("Rubix Right Color", UiColor.argb(255, 0, 0, 255));
+
+	public static final UiSwitch DUNGEONS_INVWALK_VISUALIZER_REDGREEN_ENABLED = DUNGEONS_INVWALK_VISUALIZER_SECTION
+			.toggle("Red Green Toggle", true);
+	public static final UiSwitch DUNGEONS_INVWALK_VISUALIZER_MELODY_ENABLED = DUNGEONS_INVWALK_VISUALIZER_SECTION
+			.toggle("Melody Toggle", true);
+	public static final UiColor DUNGEONS_INVWALK_VISUALIZER_MELODY_SLOT_COLOR = DUNGEONS_INVWALK_VISUALIZER_SECTION
+			.color("Melody Slot Color", UiColor.argb(0, 255, 0, 255));
+	public static final UiColor DUNGEONS_INVWALK_VISUALIZER_MELODY_CORRECT_BUTTON_COLOR = DUNGEONS_INVWALK_VISUALIZER_SECTION
+			.color("Melody Correct Button Color", UiColor.argb(0, 255, 0, 255));
+	public static final UiColor DUNGEONS_INVWALK_VISUALIZER_MELODY_INCORRECT_BUTTON_COLOR = DUNGEONS_INVWALK_VISUALIZER_SECTION
+			.color("Melody Incorrect Button Color", UiColor.argb(255, 0, 0, 255));
+	public static final UiColor DUNGEONS_INVWALK_VISUALIZER_MELODY_COLUMN_COLOR = DUNGEONS_INVWALK_VISUALIZER_SECTION
+			.color("Melody Column Color", UiColor.argb(255, 0, 255, 127));
 
 	// Visibilities
 	static {
+		DUNGEONS_AUTO_TERMS_INVWALK_MELODY_METHOD.setOptions(List.of("Keybind", "Blink"));
+		DUNGEONS_AUTO_TERMS_MELODY_SKIP.setOptions(List.of("None", "Edges", "All"));
+
+		DUNGEONS_AUTO_TERMS_CLICK_DELAY.visibleWhen(DUNGEONS_AUTO_TERMS);
+		DUNGEONS_AUTO_TERMS_FIRST_CLICK_DELAY.visibleWhen(DUNGEONS_AUTO_TERMS);
+		DUNGEONS_AUTO_TERMS_BREAK_THRESHOLD.visibleWhen(DUNGEONS_AUTO_TERMS);
+		DUNGEONS_AUTO_TERMS_MELODY_ENABLED.visibleWhen(DUNGEONS_AUTO_TERMS);
+		DUNGEONS_AUTO_TERMS_MELODY_SKIP.visibleWhen(
+				() -> Boolean.TRUE.equals(DUNGEONS_AUTO_TERMS.get()) && Boolean.TRUE.equals(DUNGEONS_AUTO_TERMS_MELODY_ENABLED.get()));
+		DUNGEONS_AUTO_TERMS_MELODY_SKIP_DELAY.visibleWhen(
+				() -> Boolean.TRUE.equals(DUNGEONS_AUTO_TERMS.get()) && Boolean.TRUE.equals(DUNGEONS_AUTO_TERMS_MELODY_ENABLED.get()));
+		DUNGEONS_AUTO_TERMS_MELODY_FIRST_DELAY.visibleWhen(
+				() -> Boolean.TRUE.equals(DUNGEONS_AUTO_TERMS.get()) && Boolean.TRUE.equals(DUNGEONS_AUTO_TERMS_MELODY_ENABLED.get()));
+
+		DUNGEONS_AUTO_TERMS_INVWALK.visibleWhen(DUNGEONS_AUTO_TERMS);
+		DUNGEONS_AUTO_TERMS_INVWALK_MENTAL.visibleWhen(
+				() -> Boolean.TRUE.equals(DUNGEONS_AUTO_TERMS.get()) && Boolean.TRUE.equals(DUNGEONS_AUTO_TERMS_INVWALK.get()));
+		DUNGEONS_AUTO_TERMS_INVWALK_MELODY.visibleWhen(
+				() -> Boolean.TRUE.equals(DUNGEONS_AUTO_TERMS.get()) && Boolean.TRUE.equals(DUNGEONS_AUTO_TERMS_INVWALK.get()));
+		DUNGEONS_AUTO_TERMS_INVWALK_MELODY_METHOD.visibleWhen(
+				() -> Boolean.TRUE.equals(DUNGEONS_AUTO_TERMS.get()) && Boolean.TRUE.equals(DUNGEONS_AUTO_TERMS_INVWALK.get())
+						&& Boolean.TRUE.equals(DUNGEONS_AUTO_TERMS_INVWALK_MELODY.get()));
+		DUNGEONS_AUTO_TERMS_VISUALIZE_MELODY.visibleWhen(
+				() -> Boolean.TRUE.equals(DUNGEONS_AUTO_TERMS.get()) && Boolean.TRUE.equals(DUNGEONS_AUTO_TERMS_INVWALK.get())
+						&& Boolean.TRUE.equals(DUNGEONS_AUTO_TERMS_INVWALK_MELODY.get()));
+		DUNGEONS_AUTO_TERMS_INVWALK_MELODY_MOVE_DELAY.visibleWhen(
+				() -> Boolean.TRUE.equals(DUNGEONS_AUTO_TERMS.get()) && Boolean.TRUE.equals(DUNGEONS_AUTO_TERMS_INVWALK.get())
+						&& Boolean.TRUE.equals(DUNGEONS_AUTO_TERMS_INVWALK_MELODY.get()));
+
+		DUNGEONS_INVWALK_VISUALIZER_ENABLED.visibleWhen(
+				() -> Boolean.TRUE.equals(DUNGEONS_AUTO_TERMS.get()) && Boolean.TRUE.equals(DUNGEONS_AUTO_TERMS_INVWALK.get()));
+		DUNGEONS_INVWALK_VISUALIZER_SCALE.visibleWhen(DUNGEONS_INVWALK_VISUALIZER_ENABLED);
+		DUNGEONS_INVWALK_VISUALIZER_COLOR.visibleWhen(DUNGEONS_INVWALK_VISUALIZER_ENABLED);
+		DUNGEONS_INVWALK_VISUALIZER_BACKGROUND_COLOR.visibleWhen(DUNGEONS_INVWALK_VISUALIZER_ENABLED);
+		DUNGEONS_INVWALK_VISUALIZER_OFFSET_X.visibleWhen(DUNGEONS_INVWALK_VISUALIZER_ENABLED);
+		DUNGEONS_INVWALK_VISUALIZER_OFFSET_Y.visibleWhen(DUNGEONS_INVWALK_VISUALIZER_ENABLED);
+		DUNGEONS_INVWALK_VISUALIZER_NUMBERS_ENABLED.visibleWhen(DUNGEONS_INVWALK_VISUALIZER_ENABLED);
+		DUNGEONS_INVWALK_VISUALIZER_NUMBERS_SHOW_NUMBERS.visibleWhen(
+				() -> Boolean.TRUE.equals(DUNGEONS_INVWALK_VISUALIZER_ENABLED.get()) && Boolean.TRUE.equals(DUNGEONS_INVWALK_VISUALIZER_NUMBERS_ENABLED.get()));
+		DUNGEONS_INVWALK_VISUALIZER_NUMBERS_COLOR1.visibleWhen(
+				() -> Boolean.TRUE.equals(DUNGEONS_INVWALK_VISUALIZER_ENABLED.get()) && Boolean.TRUE.equals(DUNGEONS_INVWALK_VISUALIZER_NUMBERS_ENABLED.get()));
+		DUNGEONS_INVWALK_VISUALIZER_NUMBERS_COLOR2.visibleWhen(
+				() -> Boolean.TRUE.equals(DUNGEONS_INVWALK_VISUALIZER_ENABLED.get()) && Boolean.TRUE.equals(DUNGEONS_INVWALK_VISUALIZER_NUMBERS_ENABLED.get()));
+		DUNGEONS_INVWALK_VISUALIZER_NUMBERS_COLOR3.visibleWhen(
+				() -> Boolean.TRUE.equals(DUNGEONS_INVWALK_VISUALIZER_ENABLED.get()) && Boolean.TRUE.equals(DUNGEONS_INVWALK_VISUALIZER_NUMBERS_ENABLED.get()));
+		DUNGEONS_INVWALK_VISUALIZER_COLORS_ENABLED.visibleWhen(DUNGEONS_INVWALK_VISUALIZER_ENABLED);
+		DUNGEONS_INVWALK_VISUALIZER_STARTSWITH_ENABLED.visibleWhen(DUNGEONS_INVWALK_VISUALIZER_ENABLED);
+		DUNGEONS_INVWALK_VISUALIZER_RUBIX_ENABLED.visibleWhen(DUNGEONS_INVWALK_VISUALIZER_ENABLED);
+		DUNGEONS_INVWALK_VISUALIZER_RUBIX_LEFT_COLOR.visibleWhen(
+				() -> Boolean.TRUE.equals(DUNGEONS_INVWALK_VISUALIZER_ENABLED.get()) && Boolean.TRUE.equals(DUNGEONS_INVWALK_VISUALIZER_RUBIX_ENABLED.get()));
+		DUNGEONS_INVWALK_VISUALIZER_RUBIX_RIGHT_COLOR.visibleWhen(
+				() -> Boolean.TRUE.equals(DUNGEONS_INVWALK_VISUALIZER_ENABLED.get()) && Boolean.TRUE.equals(DUNGEONS_INVWALK_VISUALIZER_RUBIX_ENABLED.get()));
+		DUNGEONS_INVWALK_VISUALIZER_REDGREEN_ENABLED.visibleWhen(DUNGEONS_INVWALK_VISUALIZER_ENABLED);
+		DUNGEONS_INVWALK_VISUALIZER_MELODY_ENABLED.visibleWhen(DUNGEONS_INVWALK_VISUALIZER_ENABLED);
+		DUNGEONS_INVWALK_VISUALIZER_MELODY_SLOT_COLOR.visibleWhen(
+				() -> Boolean.TRUE.equals(DUNGEONS_INVWALK_VISUALIZER_ENABLED.get()) && Boolean.TRUE.equals(DUNGEONS_INVWALK_VISUALIZER_MELODY_ENABLED.get()));
+		DUNGEONS_INVWALK_VISUALIZER_MELODY_CORRECT_BUTTON_COLOR.visibleWhen(
+				() -> Boolean.TRUE.equals(DUNGEONS_INVWALK_VISUALIZER_ENABLED.get()) && Boolean.TRUE.equals(DUNGEONS_INVWALK_VISUALIZER_MELODY_ENABLED.get()));
+		DUNGEONS_INVWALK_VISUALIZER_MELODY_INCORRECT_BUTTON_COLOR.visibleWhen(
+				() -> Boolean.TRUE.equals(DUNGEONS_INVWALK_VISUALIZER_ENABLED.get()) && Boolean.TRUE.equals(DUNGEONS_INVWALK_VISUALIZER_MELODY_ENABLED.get()));
+		DUNGEONS_INVWALK_VISUALIZER_MELODY_COLUMN_COLOR.visibleWhen(
+				() -> Boolean.TRUE.equals(DUNGEONS_INVWALK_VISUALIZER_ENABLED.get()) && Boolean.TRUE.equals(DUNGEONS_INVWALK_VISUALIZER_MELODY_ENABLED.get()));
 	}
 
 	// Chat
@@ -62,6 +203,8 @@ public final class UiDefinitions {
 	public static final UiSwitch DISABLE_BLOCKS_IN_THE_WAY = CHAT_GENERAL.toggle("Disable blocks in the way!", false);
 	public static final UiSwitch DISABLE_IMPLOSION_DAMAGE = CHAT_GENERAL.toggle("Disable Implosion damage", false);
 	public static final UiSwitch DISABLE_ABILITY_COOLDOWN = CHAT_GENERAL.toggle("Disable ability cooldown", false);
+	public static final UiSwitch COMPACT_CHAT = CHAT_GENERAL.toggle("Compact Chat", false);
+	public static final UiSlider COMPACT_CHAT_TIME = CHAT_GENERAL.slider("Compact Chat Time", 1.0, 120.0, 10.0, 1.0);
 
 	// Visibilities
 	static {
@@ -76,6 +219,8 @@ public final class UiDefinitions {
 
 	// Bindables
 	public static final UiSwitch IMAGE_ON_SCREEN = VISUAL_GENERAL.toggle("Image On Screen", false);
+	public static final UiSwitch NO_TILT = VISUAL_GENERAL.toggle("No Tilt", false);
+	public static final UiSwitch NO_DEBUFF = VISUAL_GENERAL.toggle("No Debuff", false);
 	public static final UiDropdown IMAGE_ON_SCREEN_SELECT = VISUAL_IMAGE_SECTION.dropdown("Select Image", "");
 	public static final UiSlider IMAGE_ON_SCREEN_SCALE = VISUAL_IMAGE_SECTION.slider("Scale", 0.1, 2.0, 1.0);
 	public static final UiNumber IMAGE_ON_SCREEN_X = VISUAL_IMAGE_SECTION.number("Image X", -10000, 10000, 8);
@@ -92,10 +237,7 @@ public final class UiDefinitions {
 	public static final UiButton KUUDRA_POS_TRACKER_MOVE = KUUDRA_VISUAL.button("Kuudra Pos Tracker Move", "Move",
 			button -> KuudraPosTracker.openMoveScreen());
 	public static final UiSwitch KUUDRA_ESP = KUUDRA_VISUAL.toggle("Kuudra ESP", false);
-	public static final UiSlider KUUDRA_ESP_COLOR_R = KUUDRA_VISUAL.slider("Kuudra ESP Color R", 0.0, 255.0, 255.0,
-			1.0);
-	public static final UiSlider KUUDRA_ESP_COLOR_G = KUUDRA_VISUAL.slider("Kuudra ESP Color G", 0.0, 255.0, 0.0, 1.0);
-	public static final UiSlider KUUDRA_ESP_COLOR_B = KUUDRA_VISUAL.slider("Kuudra ESP Color B", 0.0, 255.0, 0.0, 1.0);
+	public static final UiColor KUUDRA_ESP_COLOR = KUUDRA_VISUAL.color("Kuudra ESP Color", UiColor.argb(255, 0, 0, 255));
 	public static final UiSlider KUUDRA_ESP_LINE_WIDTH = KUUDRA_VISUAL.slider("Kuudra ESP Line Width", 1.0, 10.0, 3.0,
 			0.5);
 	public static final UiSwitch KUUDRA_CRATE_WAYPOINTS = KUUDRA_VISUAL.toggle("Kuudra Crate Waypoints", false);
@@ -153,9 +295,7 @@ public final class UiDefinitions {
 		KUUDRA_POS_TRACKER_X.visibleWhen(() -> false);
 		KUUDRA_POS_TRACKER_Y.visibleWhen(() -> false);
 		KUUDRA_POS_TRACKER_MOVE.visibleWhen(KUUDRA_POS_TRACKER);
-		KUUDRA_ESP_COLOR_R.visibleWhen(KUUDRA_ESP);
-		KUUDRA_ESP_COLOR_G.visibleWhen(KUUDRA_ESP);
-		KUUDRA_ESP_COLOR_B.visibleWhen(KUUDRA_ESP);
+		KUUDRA_ESP_COLOR.visibleWhen(KUUDRA_ESP);
 		KUUDRA_ESP_LINE_WIDTH.visibleWhen(KUUDRA_ESP);
 
 		KUUDRA_SPLITS_X.visibleWhen(KUUDRA_SPLITS);
@@ -198,7 +338,7 @@ public final class UiDefinitions {
 	public static final UiSlider HAND_VISUAL_SIZE = MISC_HAND_VISUALS.slider("Hand Size", -5.0, 5.0, 0.0, 0.01);
 	public static final UiSlider HAND_VISUAL_SPEED = MISC_HAND_VISUALS.slider("Hand Speed", -5.0, 5.0, 0.0, 0.01);
 
-	public static final UiSwitch HAND_VISUAL_SCALE_SWING = MISC_HAND_VISUALS.toggle("Scale Swing", false);
+	public static final UiSwitch HAND_VISUAL_CUSTOM_SWING = MISC_HAND_VISUALS.toggle("Custom Swing Animation", false);
 	public static final UiSwitch HAND_VISUAL_IGNORE_HASTE = MISC_HAND_VISUALS.toggle("Ignore Haste", false);
 	public static final UiSwitch HAND_VISUAL_NO_EQUIP_RESET = MISC_HAND_VISUALS.toggle("No Equip Reset", false);
 	public static final UiSwitch HAND_VISUAL_CANCEL_SWING = MISC_HAND_VISUALS.toggle("Cancel Swing", false);
@@ -282,9 +422,9 @@ public final class UiDefinitions {
 	public static final UiButton AUTO_REND_SCAN_ITEMS = KUUDRA_CHEATS.button("Scan Items", "Scan Items",
 			button -> {
 				if (Boolean.TRUE.equals(AUTO_REND_HARDCODE.get())) {
-					AutoRend_Reworked.scanItemSlots();
-				} else {
 					AutoRend.scanItemSlots();
+				} else {
+					AutoRend_Reworked.scanItemSlots();
 				}
 			});
 
@@ -331,6 +471,24 @@ public final class UiDefinitions {
 	// Spoofer
 
 	// Sections
+	public static final UiSection UPDATE_SECTION = UISETTINGS.section("Update");
+
+	// Bindables
+	public static final UiSwitch UPDATE_AUTO_CHECK_ON_JOIN = UPDATE_SECTION.toggle("Auto Check On Server Join", true);
+	public static final UiButton UPDATE_CHECK = UPDATE_SECTION.button("Check For Updates", "Check",
+			button -> ModUpdater.checkForUpdatesAsync(ModUpdater.CheckTrigger.MANUAL));
+	public static final UiButton UPDATE_DOWNLOAD = UPDATE_SECTION.button("Download Update", "Click to Download",
+			button -> ModUpdater.downloadLatestAsync(ModUpdater.CheckTrigger.MANUAL));
+	public static final UiButton UPDATE_MANUAL = UPDATE_SECTION.button("Manual Download", "Open GitHub",
+			button -> ModUpdater.openLatestReleasePage());
+
+	// Visibilities
+	static {
+	}
+
+	// Spoofer
+
+	// Sections
 	public static final UiSection SPOOFER_GENERAL = UISETTINGS.section("Spoofer");
 	public static final UiSection SPOOFER_FILTERS = UISETTINGS.section("Spoofer Filters");
 
@@ -354,7 +512,7 @@ public final class UiDefinitions {
 		SPOOFER_HIDE_MODS.visibleWhen(() -> isSpooferMode("Custom"));
 		SPOOFER_ALLOWED_MODS.visibleWhen(() -> isSpooferMode("Modded") || isSpooferMode("Custom"));
 		SPOOFER_BLACKLISTED_MODS.visibleWhen(
-				() -> isSpooferHideActive() && !isSpooferMode("Hide Only Moissanite"));
+				() -> isSpooferHideActive() && !isSpooferMode("Hide Only Moissanite") && !isSpooferMode("Vanilla"));
 		SPOOFER_DISABLE_CUSTOM_PAYLOADS.visibleWhen(() -> !isSpooferMode("Off"));
 		SPOOFER_ALLOWED_CUSTOM_PAYLOAD_CHANNELS.visibleWhen(
 				() -> isSpooferMode("Custom") && Boolean.TRUE.equals(SPOOFER_DISABLE_CUSTOM_PAYLOADS.get()));

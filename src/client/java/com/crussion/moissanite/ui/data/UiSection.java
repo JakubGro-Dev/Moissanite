@@ -61,6 +61,10 @@ public final class UiSection {
 		return register(new UiSlider(entryName, min, max, defaultValue, step));
 	}
 
+	public UiColor color(String entryName, int defaultArgb) {
+		return register(new UiColor(entryName, defaultArgb));
+	}
+
 	public UiNumber number(String entryName, int min, int max, int defaultValue) {
 		return register(new UiNumber(entryName, min, max, defaultValue));
 	}

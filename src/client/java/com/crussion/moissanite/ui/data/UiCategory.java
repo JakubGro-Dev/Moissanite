@@ -65,6 +65,10 @@ public final class UiCategory {
 		return defaultSection().slider(entryName, min, max, defaultValue, step);
 	}
 
+	public UiColor color(String entryName, int defaultArgb) {
+		return defaultSection().color(entryName, defaultArgb);
+	}
+
 	public UiNumber number(String entryName, int min, int max, int defaultValue) {
 		return defaultSection().number(entryName, min, max, defaultValue);
 	}

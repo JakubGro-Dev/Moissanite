@@ -12,12 +12,15 @@
 		"EntityRendererNameTagMixin",
 		"EntitySprintGuardMixin",
 		"ExampleClientMixin",
+		"GameRendererMixin",
 		"GuiGraphicsStarItemstackMixin",
 		"ItemInHandRendererMixin",
 		"LivingEntitySwingMixin",
 		"LocalPlayerSwingMixin",
 		"MinecraftScreenChangeMixin",
+		"NoDebuffMixin",
 		"NoInteractMixin",
+		"RenderSetupAccessor",
 		"RenderTypeAccessor",
 		"ScreenCustomGuiInputMixin",
 		"SlotAccessor",
@@ -30,7 +33,8 @@
 		"SpooferKnownPacksManagerMixin",
 		"SpooferLanguageAccessor",
 		"SpooferLanguageManagerAccessor",
-		"BossHealthOverlayMixin"
+		"BossHealthOverlayMixin",
+		"CompactChatMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

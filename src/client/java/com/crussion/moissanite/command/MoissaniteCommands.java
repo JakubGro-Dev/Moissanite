@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import com.crussion.moissanite.features.cheats.AutoRendHelper;
+import com.crussion.moissanite.update.ModUpdater;
 import com.crussion.moissanite.ui.UiEntrypoints;
 import com.crussion.moissanite.ui.navigation.ScreenIds;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
@@ -34,6 +35,16 @@ public final class MoissaniteCommands {
 				.executes(context -> openGui(context.getSource()))
 				.then(literal("files")
 						.executes(context -> openConfigFolder(context.getSource())))
+				.then(literal("update")
+						.then(literal("check")
+								.executes(context -> checkForUpdate(context.getSource())))
+						.then(literal("download")
+								.executes(context -> downloadUpdate(context.getSource())))
+						.then(literal("manual")
+								.executes(context -> openUpdatePage(context.getSource())))
+						.then(literal("open")
+								.executes(context -> openUpdatePage(context.getSource())))
+						.executes(context -> checkForUpdate(context.getSource())))
 				.then(literal("lc")
 						.executes(context -> leftClick(context.getSource())))
 				.then(literal("rc")
@@ -106,6 +117,21 @@ public final class MoissaniteCommands {
 
 	private static int rightClick(FabricClientCommandSource source) {
 		source.getClient().execute(AutoRendHelper::RC);
+		return 1;
+	}
+
+	private static int checkForUpdate(FabricClientCommandSource source) {
+		source.getClient().execute(() -> ModUpdater.checkForUpdatesAsync(ModUpdater.CheckTrigger.COMMAND));
+		return 1;
+	}
+
+	private static int downloadUpdate(FabricClientCommandSource source) {
+		source.getClient().execute(() -> ModUpdater.downloadLatestAsync(ModUpdater.CheckTrigger.COMMAND));
+		return 1;
+	}
+
+	private static int openUpdatePage(FabricClientCommandSource source) {
+		source.getClient().execute(ModUpdater::openLatestReleasePage);
 		return 1;
 	}
 }

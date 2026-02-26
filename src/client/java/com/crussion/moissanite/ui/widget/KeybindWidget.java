@@ -83,13 +83,14 @@ public final class KeybindWidget extends AbstractWidget {
 	@Override
 	protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
 		updateMessage();
-		int radius = Math.max(4, height / 3);
-		int bg = listening ? Colors.BUTTON_HOVER : (isHoveredOrFocused() ? Colors.BUTTON_HOVER : Colors.BUTTON_BG);
-		UiShapes.fillRoundedRect(graphics, getX(), getY(), width, height, radius, Colors.BUTTON_OUTLINE);
-		UiShapes.fillRoundedRect(graphics, getX() + 1, getY() + 1, width - 2, height - 2, Math.max(3, radius - 1), bg);
+		int radius = Math.max(6, height / 3);
+		boolean hovered = isHoveredOrFocused();
+		int bg = listening ? Colors.ACCENT_DIM : (hovered ? Colors.BUTTON_HOVER : Colors.BUTTON_BG);
+		int outline = listening ? Colors.BUTTON_OUTLINE_HOVER : (hovered ? Colors.BUTTON_OUTLINE_HOVER : Colors.BUTTON_OUTLINE);
+		UiShapes.fillRoundedOutline(graphics, getX(), getY(), width, height, radius, 1, outline, bg);
 		int textX = getX() + (width - font.width(getMessage())) / 2;
 		int textY = getY() + (height - font.lineHeight) / 2;
-		UiTextRenderer.drawBoldString(graphics, font, getMessage(), textX, textY, Colors.TEXT_PRIMARY, 1.02f);
+		UiTextRenderer.drawBoldString(graphics, font, getMessage(), textX, textY, Colors.TEXT_PRIMARY, 1.0f);
 	}
 
 	@Override
@@ -103,16 +104,16 @@ public final class KeybindWidget extends AbstractWidget {
 
 	private void updateMessage() {
 		if (listening) {
-			setMessage(UiText.uiTextStatic("[PRESS KEY]"));
+			setMessage(UiText.uiTextStatic("Press a key"));
 			return;
 		}
-		setMessage(UiText.uiTextStatic("[" + keyName() + "]"));
+		setMessage(UiText.uiTextStatic(keyName()));
 	}
 
 	private String keyName() {
 		Integer keyValue = keybind.get();
 		if (keyValue == null || keyValue == UNBOUND) {
-			return "NONE";
+			return "Unbound";
 		}
 		return KeybindKeys.displayName(keyValue);
 	}

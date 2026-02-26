@@ -1,6 +1,7 @@
 package com.crussion.moissanite.mixin.client;
 
 import com.crussion.moissanite.features.visual.storage.StorageOverlayFeature;
+import com.crussion.moissanite.features.dungeons.terminals.DungeonsTerminals;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientCommonPacketListenerImpl;
 import net.minecraft.client.multiplayer.ClientPacketListener;
@@ -22,6 +23,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class ChestInventoryUpdateMixin extends ClientCommonPacketListenerImpl {
     protected ChestInventoryUpdateMixin(Minecraft client, Connection connection, CommonListenerCookie connectionState) {
         super(client, connection, connectionState);
+    }
+
+    @Inject(method = "handleContainerSetSlot", at = @At("HEAD"), cancellable = true)
+    private void moissanite$onSingleSlotUpdateHead(ClientboundContainerSetSlotPacket packet, CallbackInfo ci) {
+        if (DungeonsTerminals.onContainerSetSlotPacket(packet)) {
+            ci.cancel();
+        }
     }
 
     @Inject(method = "handleContainerSetSlot", at = @At("TAIL"))

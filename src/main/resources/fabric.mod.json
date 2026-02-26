@@ -3,7 +3,7 @@
 	"id": "moissanite",
 	"version": "${version}",
 	"name": "Moissanite",
-	"description": "This is an example description! Tell everyone what your mod is about!",
+	"description": "Open-Source cheat client. Dependencieless.",
 	"authors": [
 		"Me!"
 	],

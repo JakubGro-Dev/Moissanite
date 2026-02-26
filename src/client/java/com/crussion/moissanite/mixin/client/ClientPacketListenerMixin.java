@@ -3,12 +3,14 @@ package com.crussion.moissanite.mixin.client;
 import com.crussion.moissanite.features.cheats.AutoDirection;
 import com.crussion.moissanite.features.cheats.AutoPearl;
 import com.crussion.moissanite.features.cheats.WardrobeKeybinds;
+import com.crussion.moissanite.features.dungeons.terminals.DungeonsTerminals;
 import com.crussion.moissanite.util.chat.SystemChatFilter;
 import com.crussion.moissanite.util.kuudra.KuudraPhaseTracker;
 
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.protocol.game.ClientboundSetActionBarTextPacket;
 import net.minecraft.network.protocol.game.ClientboundContainerClosePacket;
+import net.minecraft.network.protocol.game.ClientboundContainerSetDataPacket;
 import net.minecraft.network.protocol.game.ClientboundOpenScreenPacket;
 import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
@@ -24,12 +26,17 @@ public class ClientPacketListenerMixin {
 	private void moissanite$handleOpenScreen(ClientboundOpenScreenPacket packet, CallbackInfo ci) {
 		if (WardrobeKeybinds.onOpenScreenPacket(packet)) {
 			ci.cancel();
+			return;
+		}
+		if (DungeonsTerminals.onOpenScreenPacket(packet)) {
+			ci.cancel();
 		}
 	}
 
 	@Inject(method = "handleContainerClose", at = @At("HEAD"))
 	private void moissanite$handleContainerClose(ClientboundContainerClosePacket packet, CallbackInfo ci) {
 		WardrobeKeybinds.onClosePacketReceived();
+		DungeonsTerminals.onContainerClosePacketReceived(packet);
 	}
 
 	@Inject(method = "handleSystemChat", at = @At("HEAD"), cancellable = true)
@@ -44,6 +51,12 @@ public class ClientPacketListenerMixin {
 		AutoDirection.onSystemChat(packet.content());
 		KuudraPhaseTracker.onSystemChat(packet.content());
 		com.crussion.moissanite.features.kuudra.KuudraNoPre.onSystemChat(packet.content());
+		DungeonsTerminals.onSystemChat(packet.content());
+	}
+
+	@Inject(method = "handleContainerSetData", at = @At("TAIL"))
+	private void moissanite$handleContainerSetData(ClientboundContainerSetDataPacket packet, CallbackInfo ci) {
+		DungeonsTerminals.onContainerSetDataPacket(packet);
 	}
 
 	@Inject(method = "setTitleText", at = @At("TAIL"))

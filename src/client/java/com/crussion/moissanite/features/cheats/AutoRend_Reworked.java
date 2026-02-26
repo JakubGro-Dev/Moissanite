@@ -42,10 +42,10 @@ public final class AutoRend_Reworked {
 	private static final int AUTO_REND_TRIGGER_COLOR = 0xFF29D6FF;
 	private static final float AUTO_REND_TRIGGER_LINE_WIDTH = 2.5f;
 
-	private static final int SWAP_MIN_WAIT_TICKS = 2;
-	private static final int CLICK_MIN_WAIT_TICKS = 3;
-	private static final int OTHER_MIN_WAIT_TICKS = 3;
-	private static final int AFTER_BONE_RIGHT_CLICK_TICKS = 30;
+	private static final int SWAP_MIN_WAIT_TICKS = 1;
+	private static final int CLICK_MIN_WAIT_TICKS = 1;
+	private static final int OTHER_MIN_WAIT_TICKS = 2;
+	private static final int AFTER_BONE_RIGHT_CLICK_TICKS = 19;
 	private static final int ARMOR_SWAP_TIMEOUT_TICKS = 120;
 
 	private static final String BONEMERANG_ID = "STARRED_BONE_BOOMERANG";
@@ -93,7 +93,7 @@ public final class AutoRend_Reworked {
 	}
 
 	private static void handleClientTick(Minecraft client) {
-		if (!Boolean.TRUE.equals(UiDefinitions.AUTO_REND_HARDCODE.get())) {
+		if (Boolean.TRUE.equals(UiDefinitions.AUTO_REND_HARDCODE.get())) {
 			return;
 		}
 		if (worldLoadResetTicksRemaining > 0) {
@@ -134,6 +134,9 @@ public final class AutoRend_Reworked {
 	}
 
 	private static void triggerKuudraDead() {
+		if (Boolean.TRUE.equals(UiDefinitions.AUTO_REND_HARDCODE.get())) {
+			return;
+		}
 		if (!Boolean.TRUE.equals(UiDefinitions.AUTO_REND_DEBUG.get())) {
 			return;
 		}
@@ -156,7 +159,7 @@ public final class AutoRend_Reworked {
 		if (context == null || context.matrices() == null || context.consumers() == null) {
 			return;
 		}
-		if (!Boolean.TRUE.equals(UiDefinitions.AUTO_REND_HARDCODE.get())) {
+		if (Boolean.TRUE.equals(UiDefinitions.AUTO_REND_HARDCODE.get())) {
 			return;
 		}
 		Minecraft client = Minecraft.getInstance();
@@ -327,6 +330,10 @@ public final class AutoRend_Reworked {
 		int slot = UiDefinitions.AUTO_REND_BONEMERANG.get().intValue();
 		if (!stepStarted) {
 			stepStarted = true;
+			
+			boolean jumped = PlayerInputActions.jump();
+			sendAutoRendMessage("Jump: " + actionStatus(jumped));
+			
 			boolean swapped = HotbarItemSearch.swapHeldItem(slot);
 			sendAutoRendMessage("Swap to Bonemerang (slot " + slot + "): " + actionStatus(swapped));
 		}
@@ -340,11 +347,9 @@ public final class AutoRend_Reworked {
 			stepStarted = true;
 			boolean usedBonemerang = PlayerInputActions.rightClick();
 			sendAutoRendMessage("Right click Bonemerang: " + actionStatus(usedBonemerang));
-			boolean jumped = PlayerInputActions.jump();
-			sendAutoRendMessage("Jump: " + actionStatus(jumped));
 		}
 
-		if (waitedAfterAction(AFTER_BONE_RIGHT_CLICK_TICKS)) {
+		if (waitedAfterAction(SWAP_MIN_WAIT_TICKS)) {
 			enterStep(SequenceStep.SWAP_ATOMSPLIT);
 		}
 	}
@@ -356,7 +361,9 @@ public final class AutoRend_Reworked {
 			boolean swapped = HotbarItemSearch.swapHeldItem(slot);
 			sendAutoRendMessage("Swap to Atomsplit (slot " + slot + "): " + actionStatus(swapped));
 		}
-		if (isSwapReady(ATOMSPLIT_ID)) {
+		// Start armor swap right after Atomsplit swap; don't block on held-item verification.
+		
+		if (stepElapsedTicks >= SWAP_MIN_WAIT_TICKS) {
 			enterStep(SequenceStep.SWAP_ARMOR);
 		}
 	}
@@ -374,6 +381,7 @@ public final class AutoRend_Reworked {
 					armorSwapResolved = true;
 					armorSwapSucceeded = success;
 				});
+
 				if (!armorSwapRequested) {
 					armorSwapResolved = true;
 					armorSwapSucceeded = false;
@@ -383,7 +391,7 @@ public final class AutoRend_Reworked {
 		}
 
 		if (!armorSwapEnabled) {
-			if (waitedAfterAction(OTHER_MIN_WAIT_TICKS)) {
+			if (waitedAfterAction(OTHER_MIN_WAIT_TICKS + AFTER_BONE_RIGHT_CLICK_TICKS)) {
 				enterStep(SequenceStep.SWAP_ENDSTONE);
 			}
 			return;
@@ -394,7 +402,7 @@ public final class AutoRend_Reworked {
 				armorSwapOutcomeLogged = true;
 				sendAutoRendMessage("Swap armor completion: " + actionStatus(armorSwapSucceeded));
 			}
-			if (waitedAfterAction(OTHER_MIN_WAIT_TICKS)) {
+			if (waitedAfterAction(OTHER_MIN_WAIT_TICKS + AFTER_BONE_RIGHT_CLICK_TICKS)) {
 				enterStep(SequenceStep.SWAP_ENDSTONE);
 			}
 			return;

@@ -1,6 +1,7 @@
 package com.crussion.moissanite.mixin.client;
 
 import com.crussion.moissanite.features.cheats.WardrobeKeybinds;
+import com.crussion.moissanite.features.dungeons.terminals.DungeonsTerminals;
 
 import io.netty.channel.ChannelFutureListener;
 import net.minecraft.network.Connection;
@@ -27,10 +28,13 @@ public class ConnectionMixin {
 		}
 	}
 
-	@Inject(method = "send(Lnet/minecraft/network/protocol/Packet;Lio/netty/channel/ChannelFutureListener;Z)V", at = @At("HEAD"))
+	@Inject(method = "send(Lnet/minecraft/network/protocol/Packet;Lio/netty/channel/ChannelFutureListener;Z)V", at = @At("HEAD"), cancellable = true)
 	private void moissanite$send(Packet<?> packet, ChannelFutureListener listener, boolean flush, CallbackInfo ci) {
 		if (packet instanceof ServerboundContainerClosePacket) {
 			WardrobeKeybinds.onClosePacketSent();
+		}
+		if (DungeonsTerminals.onPacketSent(packet)) {
+			ci.cancel();
 		}
 	}
 }
