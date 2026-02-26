@@ -10,6 +10,7 @@ import java.util.regex.Pattern;
 
 import com.crussion.moissanite.ui.data.UiCategory;
 import com.crussion.moissanite.ui.data.UiButton;
+import com.crussion.moissanite.ui.data.UiColor;
 import com.crussion.moissanite.ui.data.UiDropdown;
 import com.crussion.moissanite.ui.data.UiEntry;
 import com.crussion.moissanite.ui.data.UiInput;
@@ -75,6 +76,10 @@ public final class ConfigManager {
 			return;
 		}
 		if (value instanceof UiNumber || value instanceof UiButton || value instanceof UiKeybind) {
+			bindTyped(key, (UiValue<Integer>) value, ConfigAdapters.INTEGER);
+			return;
+		}
+		if (value instanceof UiColor) {
 			bindTyped(key, (UiValue<Integer>) value, ConfigAdapters.INTEGER);
 			return;
 		}

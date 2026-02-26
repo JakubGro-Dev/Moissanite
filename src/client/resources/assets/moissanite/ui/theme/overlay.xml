@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<theme name="overlay">
+	<colors>
+		<color name="BACKDROP" value="#8A080B14" />
+		<color name="PANEL_SHADOW" value="#A506070E" />
+		<color name="PANEL_BG" value="#F42F3556" />
+		<color name="PANEL_OUTLINE" value="#B84E5477" />
+		<color name="PANEL_HIGHLIGHT" value="#229AA3D4" />
+
+		<color name="LEFT_BG" value="#EF2F3556" />
+		<color name="RIGHT_BG" value="#EF2F3556" />
+		<color name="LIST_BG" value="#EC2C3152" />
+		<color name="LIST_HOVER" value="#2B9D7BFA" />
+		<color name="LIST_SELECTED" value="#6CA380F6" />
+		<color name="LIST_SELECTED_GLOW" value="#4ABF9CFF" />
+		<color name="DIVIDER" value="#85646B90" />
+		<color name="DIVIDER_GLOW" value="#2DAD8DFF" />
+
+		<color name="SECTION_BG" value="#ED2F3556" />
+		<color name="SECTION_BG_NESTED" value="#E72D3353" />
+		<color name="SECTION_OUTLINE" value="#7E505775" />
+		<color name="SECTION_OUTLINE_NESTED" value="#724C5270" />
+		<color name="SECTION_HEADER_BG" value="#EE2E3456" />
+		<color name="SECTION_HEADER_BG_NESTED" value="#EA2C3251" />
+		<color name="SECTION_HEADER_DIVIDER" value="#855D658C" />
+		<color name="SECTION_HEADER_DIVIDER_NESTED" value="#7A596286" />
+
+		<color name="TEXT_PRIMARY" value="#F0F2FF" />
+		<color name="TEXT_MUTED" value="#AAB0CB" />
+		<color name="TEXT_SELECTED" value="#EBDCFF" />
+		<color name="TEXT_SECTION_TITLE" value="#F8F9FF" />
+		<color name="TEXT_SECTION_TITLE_NESTED" value="#E8ECFF" />
+		<color name="TEXT_ACCENT" value="#D2B7FF" />
+
+		<color name="ACCENT" value="#A986FF" />
+		<color name="ACCENT_SOFT" value="#B7A0FF" />
+		<color name="ACCENT_DIM" value="#7E68BD" />
+
+		<color name="SWITCH_TRACK" value="#4A506C" />
+		<color name="SWITCH_TRACK_ON" value="#A986FF" />
+		<color name="SWITCH_DOT_OFF" value="#E7EBFF" />
+		<color name="SWITCH_DOT_ON" value="#F7FAFF" />
+		<color name="SWITCH_DOT_HIGHLIGHT" value="#AAFFFFFF" />
+
+		<color name="SLIDER_TRACK" value="#6E7598" />
+		<color name="SLIDER_ACTIVE" value="#A986FF" />
+		<color name="SLIDER_KNOB" value="#F6F8FF" />
+		<color name="SLIDER_VALUE_BG" value="#4C5475" />
+		<color name="SLIDER_VALUE_OUTLINE" value="#6A7399" />
+
+		<color name="INPUT_BG" value="#4C5475" />
+		<color name="INPUT_OUTLINE" value="#656D92" />
+		<color name="INPUT_OUTLINE_FOCUS" value="#B091FF" />
+		<color name="BUTTON_BG" value="#4C5475" />
+		<color name="BUTTON_HOVER" value="#56608A" />
+		<color name="BUTTON_OUTLINE" value="#656D92" />
+		<color name="BUTTON_OUTLINE_HOVER" value="#B091FF" />
+	</colors>
+
+	<dimensions>
+		<dimension name="OUTER_PADDING" value="14" />
+		<dimension name="INNER_PADDING" value="12" />
+		<dimension name="SECTION_GAP" value="14" />
+		<dimension name="INPUT_HEIGHT" value="24" />
+		<dimension name="INPUT_LIST_GAP" value="10" />
+		<dimension name="LIST_ITEM_HEIGHT" value="24" />
+		<dimension name="PANEL_RADIUS" value="13" />
+		<dimension name="SECTION_RADIUS" value="9" />
+		<dimension name="CONTROL_RADIUS" value="8" />
+		<dimension name="SWITCH_RADIUS" value="10" />
+
+		<dimension name="RIGHT_PANEL_PADDING" value="10" />
+		<dimension name="RIGHT_LABEL_CONTROL_GAP" value="12" />
+		<dimension name="RIGHT_ROW_HEIGHT" value="24" />
+		<dimension name="RIGHT_ROW_SPACING" value="8" />
+		<dimension name="RIGHT_SECTION_SPACING" value="9" />
+		<dimension name="RIGHT_LABEL_WIDTH_LIMIT" value="260" />
+		<dimension name="RIGHT_CONTROL_MIN_WIDTH" value="136" />
+		<dimension name="RIGHT_CONTROL_MAX_WIDTH" value="270" />
+		<dimension name="RIGHT_SECTION_CONTENT_PADDING_X" value="12" />
+		<dimension name="RIGHT_SECTION_HEADER_TOP_PADDING" value="7" />
+		<dimension name="RIGHT_SECTION_HEADER_BOTTOM_PADDING" value="6" />
+		<dimension name="RIGHT_SECTION_BODY_TOP_PADDING" value="5" />
+		<dimension name="RIGHT_SECTION_BODY_BOTTOM_PADDING" value="7" />
+	</dimensions>
+</theme>
+

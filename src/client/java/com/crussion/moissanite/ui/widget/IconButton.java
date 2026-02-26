@@ -1,5 +1,6 @@
 package com.crussion.moissanite.ui.widget;
 
+import com.crussion.moissanite.ui.render.UiShapes;
 import com.crussion.moissanite.ui.style.Colors;
 
 import net.minecraft.client.gui.GuiGraphics;
@@ -48,19 +49,30 @@ public class IconButton extends AbstractWidget {
 	@Override
 	protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
 		if (drawFrame) {
-			int bg = isHoveredOrFocused() ? Colors.LIST_HOVER : Colors.LIST_BG;
-			graphics.fill(getX(), getY(), getX() + width, getY() + height, bg);
-			graphics.fill(getX(), getY(), getX() + width, getY() + 1, Colors.PANEL_OUTLINE);
-			graphics.fill(getX(), getY() + height - 1, getX() + width, getY() + height, Colors.PANEL_OUTLINE);
-			graphics.fill(getX(), getY(), getX() + 1, getY() + height, Colors.PANEL_OUTLINE);
-			graphics.fill(getX() + width - 1, getY(), getX() + width, getY() + height, Colors.PANEL_OUTLINE);
+			int radius = Math.max(6, Math.min(width, height) / 3);
+			int bg = isHoveredOrFocused() ? Colors.BUTTON_HOVER : Colors.BUTTON_BG;
+			int outline = isHoveredOrFocused() ? Colors.BUTTON_OUTLINE_HOVER : Colors.BUTTON_OUTLINE;
+			UiShapes.fillRoundedOutline(graphics, getX(), getY(), width, height, radius, 1, outline, bg);
+			UiShapes.fillRoundedRect(graphics, getX() + 2, getY() + 2, width - 4, 1, Math.max(3, radius - 2), Colors.PANEL_HIGHLIGHT);
 		}
 
 		if (icon != null) {
-			int iconSize = Math.max(1, Math.min(width, height) - 2);
+			int iconSize = Math.max(1, Math.min(width, height) - 5);
 			int iconX = getX() + (width - iconSize) / 2;
 			int iconY = getY() + (height - iconSize) / 2;
-			graphics.blit(RenderPipelines.GUI_TEXTURED, icon, iconX, iconY, 0f, 0f, iconSize, iconSize, textureWidth, textureHeight);
+			graphics.blit(
+					RenderPipelines.GUI_TEXTURED,
+					icon,
+					iconX,
+					iconY,
+					0f,
+					0f,
+					iconSize,
+					iconSize,
+					textureWidth,
+					textureHeight,
+					textureWidth,
+					textureHeight);
 		} else {
 			int centerX = getX() + width / 2;
 			int centerY = getY() + height / 2;

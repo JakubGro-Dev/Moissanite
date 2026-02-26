@@ -88,19 +88,19 @@ public final class AutoDirection {
 		double z = kuudra.getZ();
 
 		if (x < -128.0D) {
-			RotationController.rotateYawPitch(90.0D, 0.0D);
+			RotationController.rotateYawPitch(90.0D, 0.0D, 0.5D);
 			return;
 		}
 		if (z > -84.0D) {
-			RotationController.rotateYawPitch(0.0D, 0.0D);
+			RotationController.rotateYawPitch(0.0D, 0.0D, 0.5D);
 			return;
 		}
 		if (x > -72.0D) {
-			RotationController.rotateYawPitch(-90.0D, 0.0D);
+			RotationController.rotateYawPitch(-90.0D, 0.0D, 0.5D);
 			return;
 		}
 		if (z < -132.0D) {
-			RotationController.rotateYawPitch(179.0D, 0.0D);
+			RotationController.rotateYawPitch(179.0D, 0.0D, 0.5D);
 			return;
 		}
 	}

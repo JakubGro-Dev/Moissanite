@@ -113,6 +113,10 @@ public final class ClientSpooferOptions {
     }
 
     public static boolean isBlacklistedMod(String identifier) {
+        if (SPOOF_MODE == SpoofMode.VANILLA) {
+            return true;
+        }
+
         if (SPOOF_MODE == SpoofMode.HIDE_ONLY_MOISSANITE) {
             return matchesToken(identifier, MOISSANITE_MOD_ID);
         }
@@ -126,6 +130,10 @@ public final class ClientSpooferOptions {
     }
 
     public static boolean isBlacklistedChannel(String channelId) {
+        if (SPOOF_MODE == SpoofMode.VANILLA) {
+            return true;
+        }
+
         if (SPOOF_MODE == SpoofMode.HIDE_ONLY_MOISSANITE) {
             return matchesToken(channelId, MOISSANITE_MOD_ID);
         }

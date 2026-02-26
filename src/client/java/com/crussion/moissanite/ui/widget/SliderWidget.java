@@ -3,13 +3,16 @@ package com.crussion.moissanite.ui.widget;
 import java.util.Locale;
 
 import com.crussion.moissanite.ui.data.UiSlider;
+import com.crussion.moissanite.ui.render.UiShapes;
 import com.crussion.moissanite.ui.style.Colors;
 import com.crussion.moissanite.ui.text.UiText;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractSliderButton;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.util.Mth;
 
 public final class SliderWidget extends AbstractSliderButton {
 	private final UiSlider slider;
@@ -66,25 +69,89 @@ public final class SliderWidget extends AbstractSliderButton {
 
 	@Override
 	public void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+		updateMessage();
 		int x = getX();
 		int y = getY();
 		int width = this.width;
 		int height = this.height;
-		int valueY = y + 1;
-		int lineY = y + height - 6;
+		int valueBoxWidth = valueBoxWidth(width);
+		int valueBoxX = valueBoxX(x, width, valueBoxWidth);
+		int valueBoxHeight = Math.min(20, height);
+		int valueBoxY = y + (height - valueBoxHeight) / 2;
 
-		int lineStart = x + 6;
-		int lineEnd = x + width - 6;
-		int knobX = (int) (lineStart + (lineEnd - lineStart) * this.value);
+		int trackX = trackStart(x);
+		int trackEnd = trackEnd(trackX, valueBoxX);
+		int trackWidth = trackWidth(trackX, trackEnd);
+		int trackHeight = 4;
+		int trackY = y + (height - trackHeight) / 2;
+		int knobX = trackX + (int) Math.round(trackWidth * this.value);
+		int activeWidth = Math.max(2, knobX - trackX);
 
-		graphics.fill(lineStart, lineY, knobX, lineY + 1, Colors.SLIDER_ACTIVE);
-		graphics.fill(knobX, lineY, lineEnd, lineY + 1, Colors.SLIDER_TRACK);
+		UiShapes.fillRoundedRect(graphics, trackX, trackY, trackWidth, trackHeight, 2, Colors.SLIDER_TRACK);
+		UiShapes.fillRoundedRect(graphics, trackX, trackY, activeWidth, trackHeight, 2, Colors.SLIDER_ACTIVE);
+		UiShapes.fillCircle(graphics, knobX, trackY + trackHeight / 2, 5, Colors.SLIDER_KNOB);
+		UiShapes.fillCircle(graphics, knobX, trackY + trackHeight / 2, 2, Colors.ACCENT);
 
-		graphics.fill(lineStart - 1, lineY - 3, lineStart + 1, lineY + 4, Colors.SLIDER_TRACK);
-		graphics.fill(lineEnd - 1, lineY - 3, lineEnd + 1, lineY + 4, Colors.SLIDER_TRACK);
+		UiShapes.fillRoundedOutline(
+				graphics,
+				valueBoxX,
+				valueBoxY,
+				valueBoxWidth,
+				valueBoxHeight,
+				6,
+				1,
+				Colors.SLIDER_VALUE_OUTLINE,
+				Colors.SLIDER_VALUE_BG);
+		graphics.drawCenteredString(
+				Minecraft.getInstance().font,
+				getMessage(),
+				valueBoxX + (valueBoxWidth / 2),
+				valueBoxY + (valueBoxHeight - Minecraft.getInstance().font.lineHeight) / 2,
+				Colors.TEXT_PRIMARY);
+	}
 
-		graphics.fill(knobX - 2, lineY - 2, knobX + 3, lineY + 3, Colors.SLIDER_KNOB);
+	@Override
+	public void onClick(MouseButtonEvent event, boolean focused) {
+		setValueFromTrack(event.x());
+	}
 
-		graphics.drawCenteredString(Minecraft.getInstance().font, getMessage(), x + width / 2, valueY, Colors.TEXT_PRIMARY);
+	@Override
+	protected void onDrag(MouseButtonEvent event, double dragX, double dragY) {
+		setValueFromTrack(event.x());
+	}
+
+	private void setValueFromTrack(double mouseX) {
+		int x = getX();
+		int width = this.width;
+		int valueBoxWidth = valueBoxWidth(width);
+		int valueBoxX = valueBoxX(x, width, valueBoxWidth);
+		int trackX = trackStart(x);
+		int trackEnd = trackEnd(trackX, valueBoxX);
+		int trackWidth = trackWidth(trackX, trackEnd);
+		if (trackWidth <= 0) {
+			return;
+		}
+		double normalized = (mouseX - trackX) / (double) trackWidth;
+		setValue(Mth.clamp(normalized, 0.0, 1.0));
+	}
+
+	private static int valueBoxWidth(int width) {
+		return Math.min(66, Math.max(42, width / 3));
+	}
+
+	private static int valueBoxX(int x, int width, int valueBoxWidth) {
+		return x + width - valueBoxWidth;
+	}
+
+	private static int trackStart(int x) {
+		return x + 6;
+	}
+
+	private static int trackEnd(int trackStart, int valueBoxX) {
+		return Math.max(trackStart + 10, valueBoxX - 8);
+	}
+
+	private static int trackWidth(int trackStart, int trackEnd) {
+		return Math.max(10, trackEnd - trackStart);
 	}
 }

@@ -32,13 +32,14 @@ public final class RoundedActionButton extends AbstractWidget {
 
 	@Override
 	protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-		int radius = Math.max(4, height / 3);
+		int radius = Math.max(6, height / 3);
 		int bg = isHoveredOrFocused() ? Colors.BUTTON_HOVER : Colors.BUTTON_BG;
-		UiShapes.fillRoundedRect(graphics, getX(), getY(), width, height, radius, Colors.BUTTON_OUTLINE);
-		UiShapes.fillRoundedRect(graphics, getX() + 1, getY() + 1, width - 2, height - 2, Math.max(3, radius - 1), bg);
+		int outline = isHoveredOrFocused() ? Colors.BUTTON_OUTLINE_HOVER : Colors.BUTTON_OUTLINE;
+		UiShapes.fillRoundedOutline(graphics, getX(), getY(), width, height, radius, 1, outline, bg);
+		UiShapes.fillRoundedRect(graphics, getX() + 2, getY() + 2, width - 4, 1, Math.max(3, radius - 2), Colors.PANEL_HIGHLIGHT);
 		int textX = getX() + (width - font.width(getMessage())) / 2;
 		int textY = getY() + (height - font.lineHeight) / 2;
-		UiTextRenderer.drawBoldString(graphics, font, getMessage(), textX, textY, Colors.TEXT_PRIMARY, 1.02f);
+		UiTextRenderer.drawBoldString(graphics, font, getMessage(), textX, textY, Colors.TEXT_PRIMARY, 1.0f);
 	}
 
 	@Override

@@ -1,6 +1,7 @@
 package com.crussion.moissanite.ui.screen.overlay;
 
 import com.crussion.moissanite.ui.data.UiButton;
+import com.crussion.moissanite.ui.data.UiColor;
 import com.crussion.moissanite.ui.data.UiDropdown;
 import com.crussion.moissanite.ui.data.UiEntry;
 import com.crussion.moissanite.ui.data.UiInput;
@@ -11,6 +12,7 @@ import com.crussion.moissanite.ui.data.UiSwitch;
 import com.crussion.moissanite.ui.widget.DropdownWidget;
 import com.crussion.moissanite.ui.style.Colors;
 import com.crussion.moissanite.ui.text.UiText;
+import com.crussion.moissanite.ui.widget.ColorSelectorWidget;
 import com.crussion.moissanite.ui.widget.KeybindWidget;
 import com.crussion.moissanite.ui.widget.RoundedActionButton;
 import com.crussion.moissanite.ui.widget.RoundedEditBox;
@@ -36,6 +38,9 @@ public final class UiEntryWidgetFactory implements OverlayRightPanel.EntryWidget
 		}
 		if (entry instanceof UiSlider slider) {
 			return new SliderWidget(x, y, width, height, slider);
+		}
+		if (entry instanceof UiColor color) {
+			return new ColorSelectorWidget(this.font, x, y, width, height, color);
 		}
 		if (entry instanceof UiNumber number) {
 			return createNumberInput(number, x, y, width, height);

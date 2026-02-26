@@ -26,8 +26,8 @@ public final class Layouts {
 	public static Layout computeMain(int screenWidth, int screenHeight) {
 		int maxWidth = screenWidth - 24;
 		int maxHeight = screenHeight - 24;
-		int outerWidth = clamp((int) (screenWidth * 0.78f), 260, maxWidth);
-		int outerHeight = clamp((int) (screenHeight * 0.72f), 200, maxHeight);
+		int outerWidth = clamp((int) (screenWidth * 0.84f), 360, maxWidth);
+		int outerHeight = clamp((int) (screenHeight * 0.80f), 260, maxHeight);
 
 		int outerX = Anchors.centerX(screenWidth, outerWidth);
 		int outerY = Anchors.centerY(screenHeight, outerHeight);
@@ -41,7 +41,10 @@ public final class Layouts {
 		Rect search = new Rect(inner.x(), inner.y() + contentHeight + searchGap, inner.width(), searchHeight);
 
 		int gap = Theme.SECTION_GAP;
-		int leftWidth = clamp((int) (content.width() * 0.10f), 140, content.width() - gap - 140);
+		int minLeftWidth = 170;
+		int minRightWidth = 230;
+		int maxLeftWidth = Math.max(minLeftWidth, content.width() - gap - minRightWidth);
+		int leftWidth = clamp((int) (content.width() * 0.25f), minLeftWidth, maxLeftWidth);
 		int rightWidth = content.width() - leftWidth - gap;
 
 		Rect left = new Rect(content.x(), content.y(), leftWidth, content.height());
@@ -57,6 +60,9 @@ public final class Layouts {
 	}
 
 	private static int clamp(int value, int min, int max) {
+		if (max < min) {
+			return min;
+		}
 		return Math.max(min, Math.min(max, value));
 	}
 }

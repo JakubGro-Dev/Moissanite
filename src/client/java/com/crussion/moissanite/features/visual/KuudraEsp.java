@@ -57,10 +57,7 @@ public final class KuudraEsp {
 		Vec3 cameraPos = client.gameRenderer.getMainCamera().position();
 		AABB box = kuudra.getBoundingBox();
 		float lineWidth = resolveLineWidth(UiDefinitions.KUUDRA_ESP_LINE_WIDTH.get());
-		int color = packColor(
-				UiDefinitions.KUUDRA_ESP_COLOR_R.get(),
-				UiDefinitions.KUUDRA_ESP_COLOR_G.get(),
-				UiDefinitions.KUUDRA_ESP_COLOR_B.get());
+		int color = UiDefinitions.KUUDRA_ESP_COLOR.argb();
 
 		ShapeRenderer.renderShape(
 				context.matrices(),
@@ -71,18 +68,6 @@ public final class KuudraEsp {
 				-cameraPos.z,
 				color,
 				lineWidth);
-	}
-
-	private static int packColor(Double redRaw, Double greenRaw, Double blueRaw) {
-		int red = colorChannel(redRaw);
-		int green = colorChannel(greenRaw);
-		int blue = colorChannel(blueRaw);
-		return 0xFF000000 | (red << 16) | (green << 8) | blue;
-	}
-
-	private static int colorChannel(Double raw) {
-		double value = raw != null && Double.isFinite(raw) ? raw : 255.0;
-		return Mth.clamp((int) Math.round(value), 0, 255);
 	}
 
 	private static float resolveLineWidth(Double raw) {

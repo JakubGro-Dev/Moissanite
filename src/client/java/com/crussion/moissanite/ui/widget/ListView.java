@@ -3,6 +3,7 @@ package com.crussion.moissanite.ui.widget;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.crussion.moissanite.ui.render.UiShapes;
 import com.crussion.moissanite.ui.style.Colors;
 import com.crussion.moissanite.ui.style.Theme;
 
@@ -114,7 +115,7 @@ public final class ListView {
 		int maxScroll = Math.max(0, contentHeight - height);
 		scrollOffset = clamp(scrollOffset, 0, maxScroll);
 
-		graphics.fill(x, y, x + width, y + height, Colors.LIST_BG);
+		UiShapes.fillRoundedOutline(graphics, x, y, width, height, Theme.SECTION_RADIUS, 1, Colors.SECTION_OUTLINE_NESTED, Colors.LIST_BG);
 
 		int startIndex = scrollOffset / itemHeight;
 		int yOffset = y - (scrollOffset % itemHeight);
@@ -128,27 +129,31 @@ public final class ListView {
 			}
 
 			boolean hovered = isInside(mouseX, mouseY, x, itemY, width, itemHeight);
+			int rowX = x + 4;
+			int rowY = itemY + 2;
+			int rowW = width - 8;
+			int rowH = Math.max(8, itemHeight - 3);
+			int radius = Math.max(5, rowH / 3);
+
 			if (i == selectedIndex) {
-				// no background fill for selected; handled by scale + underline
+				UiShapes.fillRoundedRect(graphics, rowX, rowY, rowW, rowH, radius, Colors.LIST_SELECTED);
+				UiShapes.fillRoundedRect(graphics, rowX, rowY, rowW, 1, radius, Colors.LIST_SELECTED_GLOW);
+				UiShapes.fillRoundedRect(graphics, rowX + 1, rowY + 3, 2, Math.max(2, rowH - 6), 1, Colors.ACCENT);
 			} else if (hovered) {
-				graphics.fill(x, itemY, x + width, itemY + itemHeight, Colors.LIST_HOVER);
+				UiShapes.fillRoundedRect(graphics, rowX, rowY, rowW, rowH, radius, Colors.LIST_HOVER);
 			}
 
 			Component label = items.get(i);
 			int baseWidth = font.width(label);
 			float scale = i == selectedIndex ? selectedScale : textScale;
 			int scaledWidth = Math.round(baseWidth * scale);
-			int textX = x + 4;
+			int textX = x + 11;
 			if (centered) {
 				textX = x + (width - scaledWidth) / 2;
 			}
 			boolean selected = i == selectedIndex;
-			int color = selected ? Colors.TEXT_SELECTED : Colors.TEXT_PRIMARY;
-			drawLabel(graphics, font, label, textX, itemY + 3, color, bold, scale);
-
-			if (selected) {
-				drawUnderline(graphics, font, textX, scaledWidth, x, itemY, width, itemHeight);
-			}
+			int color = selected ? Colors.TEXT_SELECTED : Colors.TEXT_MUTED;
+			drawLabel(graphics, font, label, textX, itemY + (itemHeight - font.lineHeight) / 2, color, bold, scale);
 		}
 
 		if (isScrollable()) {
@@ -157,19 +162,19 @@ public final class ListView {
 	}
 
 	private void renderScrollbar(GuiGraphics graphics, int contentHeight, int maxScroll) {
-		int trackX = x + width - 4;
-		int trackY = y + 2;
-		int trackHeight = height - 4;
-		graphics.fill(trackX, trackY, trackX + 2, trackY + trackHeight, Colors.PANEL_OUTLINE);
+		int trackX = x + width - 6;
+		int trackY = y + 6;
+		int trackHeight = height - 12;
+		UiShapes.fillRoundedRect(graphics, trackX, trackY, 2, trackHeight, 1, Colors.DIVIDER);
 
 		if (maxScroll <= 0) {
 			return;
 		}
 
-		int thumbHeight = Math.max(8, (int) ((float) trackHeight * (float) height / (float) contentHeight));
+		int thumbHeight = Math.max(12, (int) ((float) trackHeight * (float) height / (float) contentHeight));
 		int scrollRange = trackHeight - thumbHeight;
 		int thumbY = trackY + (int) ((float) scrollOffset / (float) maxScroll * scrollRange);
-		graphics.fill(trackX - 1, thumbY, trackX + 3, thumbY + thumbHeight, Colors.TEXT_MUTED);
+		UiShapes.fillRoundedRect(graphics, trackX - 1, thumbY, 4, thumbHeight, 2, Colors.ACCENT_SOFT);
 	}
 
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
@@ -219,11 +224,4 @@ public final class ListView {
 		graphics.drawString(font, label, x, y, color, false);
 	}
 
-	private static void drawUnderline(GuiGraphics graphics, Font font, int textX, int textWidth, int x, int y, int width, int itemHeight) {
-		int lineWidth = Math.min(width - 12, textWidth + 10);
-		int underlineX = textX + (textWidth - lineWidth) / 2;
-		int underlineY = y + itemHeight - 3;
-		graphics.fill(underlineX, underlineY, underlineX + lineWidth, underlineY + 1, Colors.DIVIDER);
-		graphics.fill(underlineX, underlineY - 1, underlineX + lineWidth, underlineY, Colors.DIVIDER_GLOW);
-	}
 }

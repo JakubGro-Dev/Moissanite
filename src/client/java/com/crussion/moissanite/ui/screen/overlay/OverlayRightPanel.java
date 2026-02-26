@@ -10,8 +10,11 @@ import com.crussion.moissanite.ui.data.UiCategory;
 import com.crussion.moissanite.ui.data.UiEntry;
 import com.crussion.moissanite.ui.data.UiSection;
 import com.crussion.moissanite.ui.layout.Layouts;
+import com.crussion.moissanite.ui.render.UiShapes;
 import com.crussion.moissanite.ui.render.UiTextRenderer;
 import com.crussion.moissanite.ui.style.Colors;
+import com.crussion.moissanite.ui.style.Theme;
+import com.crussion.moissanite.ui.style.XmlUiTheme;
 import com.crussion.moissanite.ui.widget.ListView;
 
 import net.minecraft.client.gui.Font;
@@ -20,17 +23,26 @@ import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.network.chat.Component;
 
 public final class OverlayRightPanel {
-	private static final int PANEL_PADDING = 8;
-	private static final int LABEL_CONTROL_GAP = 8;
-	private static final int ROW_HEIGHT = 20;
-	private static final int ROW_SPACING = 4;
-	private static final int SECTION_SPACING = 6;
-	private static final int LABEL_WIDTH_LIMIT = 160;
-	private static final float LABEL_WIDTH_RATIO = 0.45f;
-	private static final int CONTROL_MIN_WIDTH = 60;
+	private static final int PANEL_PADDING = dim("RIGHT_PANEL_PADDING", 12);
+	private static final int LABEL_CONTROL_GAP = dim("RIGHT_LABEL_CONTROL_GAP", 12);
+	private static final int ROW_HEIGHT = dim("RIGHT_ROW_HEIGHT", 24);
+	private static final int ROW_SPACING = dim("RIGHT_ROW_SPACING", 8);
+	private static final int SECTION_SPACING = dim("RIGHT_SECTION_SPACING", 10);
+	private static final int LABEL_WIDTH_LIMIT = dim("RIGHT_LABEL_WIDTH_LIMIT", 250);
+	private static final float LABEL_WIDTH_RATIO = 0.54f;
+	private static final int CONTROL_MIN_WIDTH = dim("RIGHT_CONTROL_MIN_WIDTH", 132);
+	private static final int CONTROL_MAX_WIDTH = dim("RIGHT_CONTROL_MAX_WIDTH", 260);
+	private static final int SECTION_CONTENT_PADDING_X = dim("RIGHT_SECTION_CONTENT_PADDING_X", 12);
+	private static final int SECTION_HEADER_TOP_PADDING = dim("RIGHT_SECTION_HEADER_TOP_PADDING", 8);
+	private static final int SECTION_HEADER_BOTTOM_PADDING = dim("RIGHT_SECTION_HEADER_BOTTOM_PADDING", 6);
+	private static final int SECTION_BODY_TOP_PADDING = dim("RIGHT_SECTION_BODY_TOP_PADDING", 6);
+	private static final int SECTION_BODY_BOTTOM_PADDING = dim("RIGHT_SECTION_BODY_BOTTOM_PADDING", 8);
+	private static final float SECTION_TITLE_SCALE = 1.08f;
+	private static final float ENTRY_LABEL_SCALE = 1.0f;
 
 	private final List<AbstractWidget> widgets = new ArrayList<>();
 	private final List<Label> labels = new ArrayList<>();
+	private final List<SectionChrome> sectionChromes = new ArrayList<>();
 	private int contentScroll;
 	private int contentScrollMax;
 
@@ -91,7 +103,7 @@ public final class OverlayRightPanel {
 		int maxContentY = metrics.baseY;
 
 		if (panelViews.showSettingsPlaceholder) {
-			addLabel(metrics.contentX, cursor.drawY, uiText.apply("Settings go here"), Colors.TEXT_MUTED);
+			addLabel(metrics.sectionX + SECTION_CONTENT_PADDING_X, cursor.drawY, uiText.apply("Settings go here"), Colors.TEXT_MUTED, false);
 			int lineStep = font.lineHeight + ROW_SPACING;
 			cursor.drawY += lineStep;
 			cursor.rawY += lineStep;
@@ -110,6 +122,84 @@ public final class OverlayRightPanel {
 		applyVisibility(metrics.viewportTop, metrics.viewportBottom);
 	}
 
+	public void renderSectionBackgrounds(GuiGraphics graphics, Layouts.Layout layout) {
+		if (layout == null) {
+			return;
+		}
+		Layouts.Rect right = layout.right();
+		int viewTop = right.y() + PANEL_PADDING;
+		int viewBottom = right.bottom() - PANEL_PADDING;
+		int viewLeft = right.x() + PANEL_PADDING;
+		int viewRight = right.right() - PANEL_PADDING;
+
+		for (SectionChrome chrome : sectionChromes) {
+			int sectionLeft = Math.max(chrome.x, viewLeft);
+			int sectionRight = Math.min(chrome.x + chrome.width, viewRight);
+			int sectionTop = Math.max(chrome.y, viewTop);
+			int sectionBottom = Math.min(chrome.y + chrome.height, viewBottom);
+			if (sectionRight - sectionLeft < 2 || sectionBottom - sectionTop < 2) {
+				continue;
+			}
+			boolean fullyVisible = sectionLeft == chrome.x
+					&& sectionRight == chrome.x + chrome.width
+					&& sectionTop == chrome.y
+					&& sectionBottom == chrome.y + chrome.height;
+			int radius = Math.max(4, Theme.SECTION_RADIUS - chrome.level);
+			if (fullyVisible) {
+				UiShapes.fillRoundedOutline(
+						graphics,
+						chrome.x,
+						chrome.y,
+						chrome.width,
+						chrome.height,
+						radius,
+						1,
+						outlineColorFor(chrome.level),
+						sectionColorFor(chrome.level)
+				);
+			} else {
+				graphics.fill(sectionLeft, sectionTop, sectionRight, sectionBottom, outlineColorFor(chrome.level));
+				graphics.fill(sectionLeft + 1, sectionTop + 1, sectionRight - 1, sectionBottom - 1, sectionColorFor(chrome.level));
+			}
+
+			int headerTop = Math.max(sectionTop + 1, chrome.y + 1);
+			int headerBottom = Math.min(sectionBottom - 1, chrome.y + chrome.headerHeight);
+			if (headerBottom > headerTop) {
+				if (fullyVisible) {
+					UiShapes.fillRoundedRect(
+							graphics,
+							chrome.x + 1,
+							chrome.y + 1,
+							chrome.width - 2,
+							chrome.headerHeight - 1,
+							Math.max(3, radius - 1),
+							headerColorFor(chrome.level)
+					);
+				} else {
+					graphics.fill(sectionLeft + 1, headerTop, sectionRight - 1, headerBottom, headerColorFor(chrome.level));
+				}
+			}
+
+			int headerDividerY = chrome.y + chrome.headerHeight;
+			if (headerDividerY >= sectionTop && headerDividerY < sectionBottom) {
+				graphics.fill(sectionLeft + 1, headerDividerY, sectionRight - 1, headerDividerY + 1, headerDividerColorFor(chrome.level));
+			}
+
+			int dividerLeft = sectionLeft + chrome.contentPaddingX;
+			int dividerRight = sectionRight - chrome.contentPaddingX;
+			if (dividerRight - dividerLeft < 4) {
+				continue;
+			}
+			for (int dividerY : chrome.rowDividers) {
+				if (dividerY <= sectionTop + 1 || dividerY >= sectionBottom - 1) {
+					continue;
+				}
+				graphics.fill(dividerLeft, dividerY, dividerRight, dividerY + 1, Colors.DIVIDER);
+				graphics.fill(dividerLeft, dividerY - 1, dividerRight, dividerY, Colors.DIVIDER_GLOW);
+			}
+		}
+	}
+
 	public void renderLabels(GuiGraphics graphics, Font font, Layouts.Layout layout) {
 		if (layout == null) {
 			return;
@@ -121,14 +211,8 @@ public final class OverlayRightPanel {
 			if (label.y + font.lineHeight < viewTop || label.y > viewBottom) {
 				continue;
 			}
-			boolean sectionHeader = label.color == Colors.TEXT_MUTED;
-			float scale = sectionHeader ? 1.5f : 1.06f;
-			int drawX = label.x;
-			if (sectionHeader) {
-				int textWidth = Math.round(font.width(label.text) * scale);
-				drawX = right.x() + (right.width() - textWidth) / 2;
-			}
-			UiTextRenderer.drawBoldString(graphics, font, label.text, drawX, label.y, label.color, scale);
+			float scale = label.sectionHeader ? SECTION_TITLE_SCALE : ENTRY_LABEL_SCALE;
+			UiTextRenderer.drawBoldString(graphics, font, label.text, label.x, label.y, label.color, scale);
 		}
 	}
 
@@ -139,29 +223,66 @@ public final class OverlayRightPanel {
 							   EntryWidgetFactory entryFactory,
 							   Function<String, Component> uiText,
 							   Function<AbstractWidget, AbstractWidget> addWidget) {
-		addLabel(metrics.contentX, cursor.drawY, uiText.apply(view.title), Colors.TEXT_MUTED);
-		int lineStep = font.lineHeight + ROW_SPACING;
-		cursor.drawY += lineStep;
-		cursor.rawY += lineStep;
+		int sectionTop = cursor.drawY;
+		int sectionContentX = metrics.sectionX + SECTION_CONTENT_PADDING_X;
+		int sectionContentWidth = Math.max(0, metrics.sectionWidth - (SECTION_CONTENT_PADDING_X * 2));
+		int labelWidth = Math.min(LABEL_WIDTH_LIMIT, (int) (sectionContentWidth * LABEL_WIDTH_RATIO));
+		int controlAvailable = Math.max(0, sectionContentWidth - labelWidth - LABEL_CONTROL_GAP);
+		int controlWidth = clamp(controlAvailable, CONTROL_MIN_WIDTH, CONTROL_MAX_WIDTH);
+		controlWidth = Math.min(controlWidth, controlAvailable);
+		int controlX = metrics.sectionX + metrics.sectionWidth - SECTION_CONTENT_PADDING_X - controlWidth;
+		int labelX = sectionContentX;
+		int rowDividerCount = Math.max(0, view.entries.size() - 1);
+		int[] rowDividers = new int[rowDividerCount];
+		int dividerIndex = 0;
 
-		for (UiEntry<?> entry : view.entries) {
+		addLabel(labelX, sectionTop + SECTION_HEADER_TOP_PADDING, uiText.apply(view.title), sectionTitleColorFor(view.level), true);
+
+		int headerHeight = font.lineHeight + SECTION_HEADER_TOP_PADDING + SECTION_HEADER_BOTTOM_PADDING;
+		int headerStep = headerHeight + SECTION_BODY_TOP_PADDING;
+		cursor.drawY += headerStep;
+		cursor.rawY += headerStep;
+
+		for (int i = 0; i < view.entries.size(); i++) {
+			UiEntry<?> entry = view.entries.get(i);
+			int rowTop = cursor.drawY;
 			int labelY = cursor.drawY + (ROW_HEIGHT - font.lineHeight) / 2;
-			addLabel(metrics.contentX, labelY, uiText.apply(entry.name()), Colors.TEXT_PRIMARY);
-			AbstractWidget widget = entryFactory.create(entry, metrics.controlX, cursor.drawY, metrics.controlWidth, ROW_HEIGHT);
+			addLabel(labelX, labelY, uiText.apply(entry.name()), Colors.TEXT_MUTED, false);
+			AbstractWidget widget = entryFactory.create(entry, controlX, cursor.drawY, controlWidth, ROW_HEIGHT);
 			if (widget != null) {
 				widgets.add(addWidget.apply(widget));
+			}
+			if (i < view.entries.size() - 1) {
+				rowDividers[dividerIndex++] = rowTop + ROW_HEIGHT + (ROW_SPACING / 2);
 			}
 			int rowStep = ROW_HEIGHT + ROW_SPACING;
 			cursor.drawY += rowStep;
 			cursor.rawY += rowStep;
 		}
 
+		cursor.drawY += SECTION_BODY_BOTTOM_PADDING;
+		cursor.rawY += SECTION_BODY_BOTTOM_PADDING;
+
+		int sectionHeight = Math.max(1, cursor.drawY - sectionTop);
+		sectionChromes.add(
+				new SectionChrome(
+						metrics.sectionX,
+						sectionTop,
+						metrics.sectionWidth,
+						sectionHeight,
+						headerHeight,
+						view.level,
+						SECTION_CONTENT_PADDING_X,
+						rowDividers
+				)
+		);
+
 		cursor.drawY += SECTION_SPACING;
 		cursor.rawY += SECTION_SPACING;
 	}
 
-	private void addLabel(int x, int y, Component text, int color) {
-		labels.add(new Label(x, y, text, color));
+	private void addLabel(int x, int y, Component text, int color, boolean sectionHeader) {
+		labels.add(new Label(x, y, text, color, sectionHeader));
 	}
 
 	private void clearWidgets(Consumer<AbstractWidget> removeWidget) {
@@ -170,6 +291,7 @@ public final class OverlayRightPanel {
 		}
 		widgets.clear();
 		labels.clear();
+		sectionChromes.clear();
 	}
 
 	private void applyVisibility(int viewTop, int viewBottom) {
@@ -191,7 +313,7 @@ public final class OverlayRightPanel {
 		if (showingSettings) {
 			if (settingsCategory != null) {
 				for (UiSection section : settingsCategory.sections()) {
-					addVisibleSection(views, section, section.name());
+					addVisibleSection(views, section, section.name(), 0);
 				}
 			}
 			showSettingsPlaceholder = views.isEmpty();
@@ -201,7 +323,7 @@ public final class OverlayRightPanel {
 				for (UiSection section : category.sections()) {
 					List<UiEntry<?>> matches = matchingEntries(section, query);
 					if (!matches.isEmpty()) {
-						views.add(new SectionView(category.name() + " / " + section.name(), matches));
+						views.add(new SectionView(category.name() + " / " + section.name(), matches, 1));
 					}
 				}
 			}
@@ -209,7 +331,7 @@ public final class OverlayRightPanel {
 			UiCategory category = currentCategory(categories, selectionList);
 			if (category != null) {
 				for (UiSection section : category.sections()) {
-					addVisibleSection(views, section, section.name());
+					addVisibleSection(views, section, section.name(), 0);
 				}
 			}
 		}
@@ -217,10 +339,10 @@ public final class OverlayRightPanel {
 		return new PanelViews(views, showSettingsPlaceholder);
 	}
 
-	private static void addVisibleSection(List<SectionView> views, UiSection section, String title) {
+	private static void addVisibleSection(List<SectionView> views, UiSection section, String title, int level) {
 		List<UiEntry<?>> visibleEntries = visibleEntries(section);
 		if (!visibleEntries.isEmpty()) {
-			views.add(new SectionView(title, visibleEntries));
+			views.add(new SectionView(title, visibleEntries, level));
 		}
 	}
 
@@ -264,7 +386,47 @@ public final class OverlayRightPanel {
 	}
 
 	private static int clamp(int value, int min, int max) {
+		if (max < min) {
+			return min;
+		}
 		return Math.max(min, Math.min(max, value));
+	}
+
+	private static int dim(String token, int fallback) {
+		return XmlUiTheme.dimension(token, fallback);
+	}
+
+	private static int sectionColorFor(int level) {
+		return level > 0 ? Colors.SECTION_BG_NESTED : Colors.SECTION_BG;
+	}
+
+	private static int outlineColorFor(int level) {
+		return level > 0 ? Colors.SECTION_OUTLINE_NESTED : Colors.SECTION_OUTLINE;
+	}
+
+	private static int headerColorFor(int level) {
+		return level > 0 ? Colors.SECTION_HEADER_BG_NESTED : Colors.SECTION_HEADER_BG;
+	}
+
+	private static int headerDividerColorFor(int level) {
+		return level > 0 ? Colors.SECTION_HEADER_DIVIDER_NESTED : Colors.SECTION_HEADER_DIVIDER;
+	}
+
+	private static int sectionTitleColorFor(int level) {
+		return level > 0 ? Colors.TEXT_SECTION_TITLE_NESTED : Colors.TEXT_SECTION_TITLE;
+	}
+
+	private static int inferSectionLevel(String title) {
+		if (title == null || title.isBlank()) {
+			return 0;
+		}
+		int level = 0;
+		int index = title.indexOf('/');
+		while (index >= 0) {
+			level++;
+			index = title.indexOf('/', index + 1);
+		}
+		return level;
 	}
 
 	private static final class PanelViews {
@@ -278,32 +440,27 @@ public final class OverlayRightPanel {
 	}
 
 	private static final class PanelMetrics {
-		private final int contentX;
+		private final int sectionX;
 		private final int baseY;
-		private final int controlX;
-		private final int controlWidth;
+		private final int sectionWidth;
 		private final int viewportTop;
 		private final int viewportBottom;
 
-		private PanelMetrics(int contentX, int baseY, int controlX, int controlWidth, int viewportTop, int viewportBottom) {
-			this.contentX = contentX;
+		private PanelMetrics(int sectionX, int baseY, int sectionWidth, int viewportTop, int viewportBottom) {
+			this.sectionX = sectionX;
 			this.baseY = baseY;
-			this.controlX = controlX;
-			this.controlWidth = controlWidth;
+			this.sectionWidth = sectionWidth;
 			this.viewportTop = viewportTop;
 			this.viewportBottom = viewportBottom;
 		}
 
 		private static PanelMetrics of(Layouts.Rect right) {
-			int contentX = right.x() + PANEL_PADDING;
+			int sectionX = right.x() + PANEL_PADDING;
 			int baseY = right.y() + PANEL_PADDING;
-			int contentWidth = right.width() - (PANEL_PADDING * 2);
+			int sectionWidth = Math.max(0, right.width() - (PANEL_PADDING * 2));
 			int viewportTop = right.y() + PANEL_PADDING;
 			int viewportBottom = right.bottom() - PANEL_PADDING;
-			int labelWidth = Math.min(LABEL_WIDTH_LIMIT, (int) (contentWidth * LABEL_WIDTH_RATIO));
-			int controlX = contentX + labelWidth + LABEL_CONTROL_GAP;
-			int controlWidth = Math.max(CONTROL_MIN_WIDTH, contentWidth - labelWidth - LABEL_CONTROL_GAP);
-			return new PanelMetrics(contentX, baseY, controlX, controlWidth, viewportTop, viewportBottom);
+			return new PanelMetrics(sectionX, baseY, sectionWidth, viewportTop, viewportBottom);
 		}
 	}
 
@@ -320,10 +477,12 @@ public final class OverlayRightPanel {
 	private static final class SectionView {
 		private final String title;
 		private final List<UiEntry<?>> entries;
+		private final int level;
 
-		private SectionView(String title, List<UiEntry<?>> entries) {
+		private SectionView(String title, List<UiEntry<?>> entries, int level) {
 			this.title = title;
 			this.entries = entries;
+			this.level = Math.max(Math.max(0, level), inferSectionLevel(title));
 		}
 	}
 
@@ -332,12 +491,36 @@ public final class OverlayRightPanel {
 		private final int y;
 		private final Component text;
 		private final int color;
+		private final boolean sectionHeader;
 
-		private Label(int x, int y, Component text, int color) {
+		private Label(int x, int y, Component text, int color, boolean sectionHeader) {
 			this.x = x;
 			this.y = y;
 			this.text = text;
 			this.color = color;
+			this.sectionHeader = sectionHeader;
+		}
+	}
+
+	private static final class SectionChrome {
+		private final int x;
+		private final int y;
+		private final int width;
+		private final int height;
+		private final int headerHeight;
+		private final int level;
+		private final int contentPaddingX;
+		private final int[] rowDividers;
+
+		private SectionChrome(int x, int y, int width, int height, int headerHeight, int level, int contentPaddingX, int[] rowDividers) {
+			this.x = x;
+			this.y = y;
+			this.width = width;
+			this.height = height;
+			this.headerHeight = headerHeight;
+			this.level = level;
+			this.contentPaddingX = Math.max(0, contentPaddingX);
+			this.rowDividers = rowDividers == null ? new int[0] : rowDividers;
 		}
 	}
 }

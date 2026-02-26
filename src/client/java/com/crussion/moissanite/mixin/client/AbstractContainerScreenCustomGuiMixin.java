@@ -3,6 +3,7 @@ package com.crussion.moissanite.mixin.client;
 import com.crussion.moissanite.util.customgui.CoordRememberingSlot;
 import com.crussion.moissanite.util.customgui.CustomGui;
 import com.crussion.moissanite.util.customgui.HasCustomGui;
+import com.crussion.moissanite.features.dungeons.terminals.DungeonsTerminals;
 
 import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Final;
@@ -142,6 +143,10 @@ public abstract class AbstractContainerScreenCustomGuiMixin<T extends AbstractCo
 
 	@Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
 	private void moissanite$mouseClicked(MouseButtonEvent click, boolean doubled, CallbackInfoReturnable<Boolean> cir) {
+		if (DungeonsTerminals.onContainerScreenMouseClicked(click)) {
+			cir.setReturnValue(true);
+			return;
+		}
 		if (moissanite$customGui != null && moissanite$customGui.mouseClick(click, doubled)) {
 			cir.setReturnValue(true);
 		}
@@ -171,6 +176,10 @@ public abstract class AbstractContainerScreenCustomGuiMixin<T extends AbstractCo
 
 	@Inject(method = "keyPressed", at = @At("HEAD"), cancellable = true)
 	private void moissanite$keyPressed(KeyEvent input, CallbackInfoReturnable<Boolean> cir) {
+		if (DungeonsTerminals.onContainerScreenKeyPressed(input)) {
+			cir.setReturnValue(true);
+			return;
+		}
 		if (moissanite$customGui != null && moissanite$customGui.keyPressed(input)) {
 			cir.setReturnValue(true);
 		}

@@ -36,6 +36,11 @@ import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.scores.DisplaySlot;
+import net.minecraft.world.scores.Objective;
+import net.minecraft.world.scores.PlayerScoreEntry;
+import net.minecraft.world.scores.PlayerTeam;
+import net.minecraft.world.scores.Scoreboard;
 
 public final class AutoPearl {
 	private static final String KUUDRA_HOLLOW = "Kuudra's Hollow";
@@ -56,6 +61,7 @@ public final class AutoPearl {
 			{ 0, 2250, 3000, 3500, 4250, 4250 }
 	};
 	private static final Pattern PICKUP_PROGRESS_PATTERN = Pattern.compile("(\\d{1,3})%");
+	private static final Pattern KUUDRA_TIER_PATTERN = Pattern.compile("\\bt([1-5])\\b");
 
 	private static final String SUPPLY_READY_MARKER = "bring supply chest here";
 	private static final String SUPPLY_RECEIVED_MARKER = "supplies received";
@@ -410,13 +416,78 @@ public final class AutoPearl {
 	}
 
 	private static int configuredKuudraTier() {
-		return sliderToInt(UiDefinitions.AUTO_PEARL_KUUDRA_TIER.get(), KUUDRA_TIER_MAX, KUUDRA_TIER_MIN,
-				KUUDRA_TIER_MAX);
+		Integer detectedTier = detectKuudraTierFromScoreboard();
+		if (detectedTier != null) {
+			return detectedTier;
+		}
+		return sliderToInt(UiDefinitions.AUTO_PEARL_KUUDRA_TIER.get(), KUUDRA_TIER_MAX, KUUDRA_TIER_MIN, KUUDRA_TIER_MAX);
 	}
 
 	private static int sliderToInt(Double value, int fallback, int min, int max) {
 		double raw = value != null && Double.isFinite(value) ? value : fallback;
 		return Mth.clamp((int) Math.round(raw), min, max);
+	}
+
+	private static Integer detectKuudraTierFromScoreboard() {
+		Minecraft client = Minecraft.getInstance();
+		if (client == null || client.level == null) {
+			return null;
+		}
+
+		Scoreboard scoreboard = client.level.getScoreboard();
+		Objective sidebar = scoreboard.getDisplayObjective(DisplaySlot.SIDEBAR);
+		if (sidebar == null) {
+			return null;
+		}
+
+		Integer fallbackTier = extractTierFromText(sidebar.getDisplayName().getString(), false);
+		Integer strictTier = extractTierFromText(sidebar.getDisplayName().getString(), true);
+		if (strictTier != null) {
+			return strictTier;
+		}
+
+		for (PlayerScoreEntry entry : scoreboard.listPlayerScores(sidebar)) {
+			if (entry == null || entry.isHidden()) {
+				continue;
+			}
+			String line = sidebarLine(scoreboard, entry);
+			strictTier = extractTierFromText(line, true);
+			if (strictTier != null) {
+				return strictTier;
+			}
+			if (fallbackTier == null) {
+				fallbackTier = extractTierFromText(line, false);
+			}
+		}
+		return fallbackTier;
+	}
+
+	private static Integer extractTierFromText(String rawText, boolean requireKuudraToken) {
+		String normalized = TextNormalizer.normalize(rawText);
+		if (normalized.isBlank()) {
+			return null;
+		}
+		if (requireKuudraToken && !normalized.contains("kuudra")) {
+			return null;
+		}
+		Matcher matcher = KUUDRA_TIER_PATTERN.matcher(normalized);
+		if (!matcher.find()) {
+			return null;
+		}
+		try {
+			return Mth.clamp(Integer.parseInt(matcher.group(1)), KUUDRA_TIER_MIN, KUUDRA_TIER_MAX);
+		} catch (NumberFormatException ignored) {
+			return null;
+		}
+	}
+
+	private static String sidebarLine(Scoreboard scoreboard, PlayerScoreEntry entry) {
+		if (entry.display() != null) {
+			return entry.display().getString();
+		}
+		String owner = entry.owner();
+		PlayerTeam team = scoreboard.getPlayersTeam(owner);
+		return PlayerTeam.formatNameForTeam(team, Component.literal(owner)).getString();
 	}
 
 	private static void updateSupplyStates(Minecraft client) {

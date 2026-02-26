@@ -39,8 +39,8 @@ public final class HandVisualTweaks {
 			|| Math.abs(handSizeOffset()) > EPSILON;
 	}
 
-	public static boolean scaleSwingWithHandSize() {
-		return Boolean.TRUE.equals(UiDefinitions.HAND_VISUAL_SCALE_SWING.get());
+	public static boolean customSwingAnimation() {
+		return Boolean.TRUE.equals(UiDefinitions.HAND_VISUAL_CUSTOM_SWING.get());
 	}
 
 	public static boolean ignoreHaste() {
