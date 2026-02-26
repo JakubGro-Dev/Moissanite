@@ -19,14 +19,21 @@ import com.mojang.blaze3d.shaders.UniformType;
 
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientWorldEvents;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
+import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.ShapeRenderer;
 import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.monster.MagmaCube;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.Shapes;
@@ -41,6 +48,20 @@ public final class AutoRend_Reworked {
 	private static final int WORLD_LOAD_RESET_WINDOW_TICKS = 80;
 	private static final int AUTO_REND_TRIGGER_COLOR = 0xFF29D6FF;
 	private static final float AUTO_REND_TRIGGER_LINE_WIDTH = 2.5f;
+	private static final Identifier AUTO_REND_RESULT_HUD_ID = Identifier.fromNamespaceAndPath(
+			"moissanite",
+			"auto_rend_reworked_result");
+	private static final int REND_MIN_DIFF = 1_666;
+	private static final int REND_DAMAGE_LOW_DIFF = 4_166;
+	private static final int REND_DAMAGE_MED_DIFF = 7_291;
+	private static final int REND_RESULT_BAD_COLOR = 0xFFFF5555;
+	private static final int REND_RESULT_MID_COLOR = 0xFFFFFF55;
+	private static final int REND_RESULT_HIGH_COLOR = 0xFF55FF55;
+	private static final int REND_RESULT_HUD_DURATION_TICKS = 80;
+	private static final int REND_RESULT_FINISH_GRACE_TICKS = 2;
+	private static final float REND_RESULT_HUD_SCALE = 2.2f;
+	private static final int REND_RESULT_HUD_Y = 44;
+	private static final double REND_RESULT_DISPLAY_MULTIPLIER = 0.94D;
 
 	private static final int SWAP_MIN_WAIT_TICKS = 1;
 	private static final int CLICK_MIN_WAIT_TICKS = 1;
@@ -72,6 +93,12 @@ public final class AutoRend_Reworked {
 	private static boolean armorSwapResolved;
 	private static boolean armorSwapSucceeded;
 	private static boolean armorSwapOutcomeLogged;
+	private static boolean rendResultWindowActive;
+	private static int rendResultGraceTicks = -1;
+	private static int rendLastKuudraHp = -1;
+	private static String rendResultText = "";
+	private static int rendResultColor = REND_RESULT_BAD_COLOR;
+	private static int rendResultHudTicks;
 
 	private AutoRend_Reworked() {
 	}
@@ -85,14 +112,20 @@ public final class AutoRend_Reworked {
 		ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register((client, world) -> {
 			worldLoadResetTicksRemaining = WORLD_LOAD_RESET_WINDOW_TICKS;
 			tryResetForKuudraWorldLoad();
+			resetRendResultState();
 		});
 
 		ClientTickEvents.END_CLIENT_TICK.register(AutoRend_Reworked::handleClientTick);
 		WorldRenderEvents.END_MAIN.register(AutoRend_Reworked::renderActivationZones);
+		HudElementRegistry.attachElementBefore(
+				VanillaHudElements.SUBTITLES,
+				AUTO_REND_RESULT_HUD_ID,
+				AutoRend_Reworked::renderRendResultOverlay);
 		FakeKeybinds.onKeyPress(UiDefinitions.AUTO_REND_TRIGGER_KEYBIND, AutoRend_Reworked::triggerKuudraDead);
 	}
 
 	private static void handleClientTick(Minecraft client) {
+		tickRendResultState(client);
 		if (Boolean.TRUE.equals(UiDefinitions.AUTO_REND_HARDCODE.get())) {
 			return;
 		}
@@ -453,6 +486,7 @@ public final class AutoRend_Reworked {
 		if (!stepStarted) {
 			stepStarted = true;
 			boolean pull = PlayerInputActions.leftClick();
+			beginRendResultWindow();
 			sendAutoRendMessage("Left click pull: " + actionStatus(pull));
 		}
 		if (waitedAfterAction(CLICK_MIN_WAIT_TICKS)) {
@@ -492,6 +526,7 @@ public final class AutoRend_Reworked {
 		}
 		if (waitedAfterAction(CLICK_MIN_WAIT_TICKS)) {
 			sendAutoRendMessage("Sequence finished.");
+			markRendWindowFinished();
 			resetSequence();
 		}
 	}
@@ -517,9 +552,13 @@ public final class AutoRend_Reworked {
 	}
 
 	private static void resetSequence() {
+		boolean wasRunning = sequenceRunning;
 		sequenceRunning = false;
 		sequenceElapsedTicks = 0;
 		enterStep(SequenceStep.IDLE);
+		if (wasRunning && rendResultWindowActive && rendResultGraceTicks < 0) {
+			rendResultGraceTicks = 0;
+		}
 	}
 
 	private static void tryResetForKuudraWorldLoad() {
@@ -586,6 +625,149 @@ public final class AutoRend_Reworked {
 
 	private static String actionStatus(boolean success) {
 		return success ? "ok" : "failed";
+	}
+
+	private static void beginRendResultWindow() {
+		rendResultWindowActive = true;
+		rendResultGraceTicks = -1;
+		rendLastKuudraHp = readKuudraHp();
+		rendResultText = "";
+		rendResultColor = REND_RESULT_BAD_COLOR;
+		rendResultHudTicks = 0;
+	}
+
+	private static void markRendWindowFinished() {
+		if (!rendResultWindowActive) {
+			return;
+		}
+		rendResultGraceTicks = REND_RESULT_FINISH_GRACE_TICKS;
+	}
+
+	private static void tickRendResultState(Minecraft client) {
+		if (rendResultHudTicks > 0) {
+			rendResultHudTicks--;
+		}
+		if (!rendResultWindowActive) {
+			return;
+		}
+
+		if (rendResultGraceTicks == 0) {
+			rendResultText = "BAD";
+			rendResultColor = REND_RESULT_BAD_COLOR;
+			rendResultWindowActive = false;
+			rendResultGraceTicks = -1;
+			rendResultHudTicks = REND_RESULT_HUD_DURATION_TICKS;
+			return;
+		}
+
+		if (tryCaptureRendResult(client)) {
+			rendResultWindowActive = false;
+			rendResultGraceTicks = -1;
+			rendResultHudTicks = REND_RESULT_HUD_DURATION_TICKS;
+			return;
+		}
+
+		if (rendResultGraceTicks > 0) {
+			rendResultGraceTicks--;
+		}
+	}
+
+	private static boolean tryCaptureRendResult(Minecraft client) {
+		int kuudraHp = readKuudraHp(client);
+		if (kuudraHp < 0) {
+			rendLastKuudraHp = -1;
+			return false;
+		}
+
+		if (rendLastKuudraHp > 0) {
+			int diff = rendLastKuudraHp - kuudraHp;
+			if (diff > REND_MIN_DIFF) {
+				rendResultText = formatRendDamage(diff * 9_600);
+				rendResultColor = resolveRendResultColor(diff);
+				sendAutoRendMessage("Rend result: " + rendResultText);
+				return true;
+			}
+		}
+
+		rendLastKuudraHp = kuudraHp;
+		return false;
+	}
+
+	private static int readKuudraHp() {
+		return readKuudraHp(Minecraft.getInstance());
+	}
+
+	private static int readKuudraHp(Minecraft client) {
+		if (client == null || client.player == null || client.level == null) {
+			return -1;
+		}
+		if (!ScoreboardAreaMatcher.isInArea(KUUDRA_HOLLOW)) {
+			return -1;
+		}
+		if (KuudraPhaseTracker.getPhase() != KuudraPhaseTracker.PHASE_DPS || client.player.getY() > 30.0D) {
+			return -1;
+		}
+
+		MagmaCube boss = KuudraPhaseTracker.getKuudraEntity();
+		if (boss == null) {
+			return -1;
+		}
+
+		int hp = (int) boss.getHealth();
+		return hp > 25_000 ? -1 : hp;
+	}
+
+	private static String formatRendDamage(int damage) {
+		double adjustedDamage = damage * REND_RESULT_DISPLAY_MULTIPLIER;
+		return String.format(Locale.ROOT, "%.1fM", adjustedDamage / 1_000_000.0D);
+	}
+
+	private static int resolveRendResultColor(int diff) {
+		if (diff <= REND_DAMAGE_LOW_DIFF) {
+			return REND_RESULT_BAD_COLOR;
+		}
+		if (diff <= REND_DAMAGE_MED_DIFF) {
+			return REND_RESULT_MID_COLOR;
+		}
+		return REND_RESULT_HIGH_COLOR;
+	}
+
+	private static void renderRendResultOverlay(GuiGraphics graphics, DeltaTracker tickCounter) {
+		if (graphics == null || rendResultHudTicks <= 0 || rendResultText == null || rendResultText.isEmpty()) {
+			return;
+		}
+		if (!isRendResultHudEnabled()) {
+			return;
+		}
+
+		Minecraft client = Minecraft.getInstance();
+		if (client == null || client.font == null || client.getWindow() == null) {
+			return;
+		}
+
+		int centerX = client.getWindow().getGuiScaledWidth() / 2;
+		Component text = Component.literal(rendResultText)
+				.withStyle(style -> style.withBold(true).withColor(rendResultColor & 0x00FFFFFF));
+
+		graphics.pose().pushMatrix();
+		graphics.pose().translate(centerX, REND_RESULT_HUD_Y);
+		graphics.pose().scale(REND_RESULT_HUD_SCALE, REND_RESULT_HUD_SCALE);
+		graphics.drawString(client.font, text, -client.font.width(rendResultText) / 2, 0, rendResultColor, true);
+		graphics.pose().popMatrix();
+	}
+
+	private static void resetRendResultState() {
+		rendResultWindowActive = false;
+		rendResultGraceTicks = -1;
+		rendLastKuudraHp = -1;
+		rendResultText = "";
+		rendResultColor = REND_RESULT_BAD_COLOR;
+		rendResultHudTicks = 0;
+	}
+
+	private static boolean isRendResultHudEnabled() {
+		return Boolean.TRUE.equals(UiDefinitions.REND_DAMAGE.get())
+				&& Boolean.TRUE.equals(UiDefinitions.REND_DAMAGE_AUTO_REND_SCREEN.get());
 	}
 
 	private enum SequenceStep {

@@ -430,6 +430,7 @@ public final class UiDefinitions {
 
 	public static final UiSwitch NO_PRE = KUUDRA_NORMAL.toggle("No Pre", false);
 	public static final UiSwitch REND_DAMAGE = KUUDRA_NORMAL.toggle("Rend Damage", false);
+	public static final UiSwitch REND_DAMAGE_AUTO_REND_SCREEN = KUUDRA_NORMAL.toggle("Auto Rend Screen Damage", true);
 
 	// Visibilities
 	static {
@@ -466,6 +467,7 @@ public final class UiDefinitions {
 		AUTO_REND_PEARLS.visibleWhen(AUTO_REND);
 		AUTO_REND_SWAP_ARMOR.visibleWhen(AUTO_REND);
 		AUTO_REND_SCAN_ITEMS.visibleWhen(AUTO_REND);
+		REND_DAMAGE_AUTO_REND_SCREEN.visibleWhen(REND_DAMAGE);
 	}
 
 	// Spoofer

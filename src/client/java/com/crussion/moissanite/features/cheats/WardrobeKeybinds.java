@@ -251,7 +251,7 @@ public final class WardrobeKeybinds {
 			return;
 		}
 
-		client.gui.setTimes(0, 20, 0);
+		client.gui.setTimes(0, 14, 0);
 		client.gui.setSubtitle(Component.empty());
 		client.gui.setTitle(Component.literal("Changing").withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD));
 		if (!overlaySoundPlayed && client.player != null) {
