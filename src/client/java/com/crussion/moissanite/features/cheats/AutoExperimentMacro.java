@@ -58,17 +58,20 @@ public final class AutoExperimentMacro {
 	private static final int SUPERPAIRS_CLICK_DELAY_MAX_MS = 1_600;
 	private static final int SUPERPAIRS_PAIR_ATTEMPTS = 3;
 	private static final int SUPERPAIRS_PAIR_CLICK_COUNT = SUPERPAIRS_PAIR_ATTEMPTS * 2;
+	private static final int SUPERPAIRS_AFTER_PAIR_EXTRA_WAIT_TICKS = 36;
 	private static final double SUPERPAIRS_XP_FALLBACK_UNCOVERED_RATIO = 0.90D;
+	private static final int RENEW_EXPERIMENTS_LEVEL_COST = 50;
 	private static final int TITANIC_LEVEL_THRESHOLD = 110;
 	private static final double ROTATION_MULTIPLIER = 0.6D;
-	private static final double TABLE_ENTITY_Y_OFFSET = -0.35D;
+	private static final double TABLE_AIM_Y_OFFSET = 1.0D;
 	private static final String GRAND_BOTTLE_ID = "GRAND_EXP_BOTTLE";
 	private static final String TITANIC_BOTTLE_ID = "TITANIC_EXP_BOTTLE";
 	private static final String SKYHANNI_ULTRA_RARE_BOOK_MARKER = "ultra-rare book";
 	private static final String[] SUPERPAIRS_EXTRA_CLAIM_TARGETS = {
 			"growth vi",
 			"protection vi",
-			"titanic experience bottle"
+			"titanic experience bottle",
+			"gold bottle cap"
 	};
 
 	private static final ExperimentTier[] CHRONOMATRON_TIERS = {
@@ -228,9 +231,12 @@ public final class AutoExperimentMacro {
 	private static int lastSeenGuiContainerId = -1;
 	private static String lastSeenGuiTitle = "";
 	private static MacroStep reopenTableNextStep = MacroStep.IDLE;
+	private static MacroStep afterBottlesTableStep = MacroStep.IDLE;
 	private static final Map<String, Integer> superpairsFirstSlotsByEnchant = new HashMap<>();
 	private static final Set<Integer> superpairsKnownHighTierSlots = new HashSet<>();
 	private static final Set<Integer> superpairsClickedRevealSlots = new HashSet<>();
+	private static final Set<Integer> superpairsIgnoredPrioritySlots = new HashSet<>();
+	private static final Set<String> superpairsExhaustedPairKeys = new HashSet<>();
 	private static SuperpairsPair activeSuperpairsPair;
 	private static int activeSuperpairsPairClicksRemaining;
 	private static boolean activeSuperpairsClickFirstNext;
@@ -338,7 +344,8 @@ public final class AutoExperimentMacro {
 		switch (currentStep) {
 			case FIND_TABLE -> handleFindTable(client);
 			case ROTATE_TO_TABLE -> handleRotateToTable(client, MacroStep.OPEN_TABLE);
-			case OPEN_TABLE -> handleOpenTable(client, MacroStep.CLICK_CHRONOMATRON);
+			case OPEN_TABLE -> handleOpenTable(client, MacroStep.CHECK_INITIAL_RENEW_EXPERIMENTS);
+			case CHECK_INITIAL_RENEW_EXPERIMENTS -> handleInitialRenewExperiments(client);
 			case CLICK_CHRONOMATRON -> handleClickMainEntry(client, "chronomatron", MacroStep.SELECT_CHRONOMATRON);
 			case SELECT_CHRONOMATRON -> handleSelectTier(
 					client,
@@ -376,7 +383,7 @@ public final class AutoExperimentMacro {
 			case THROW_BOTTLES -> handleThrowBottles();
 			case WAIT_AFTER_BOTTLES -> handleWaitAfterBottles();
 			case ROTATE_BACK_TO_TABLE -> handleRotateToTable(client, MacroStep.REOPEN_TABLE);
-			case REOPEN_TABLE -> handleOpenTable(client, MacroStep.CLICK_SUPERPAIRS_AFTER_BOTTLES);
+			case REOPEN_TABLE -> handleOpenTable(client, afterBottlesTableStep());
 			case ROTATE_REOPEN_TABLE -> handleRotateToTable(client, MacroStep.REOPEN_TABLE_DYNAMIC);
 			case REOPEN_TABLE_DYNAMIC -> handleOpenTable(client, reopenTableNextStep);
 			case CLICK_SUPERPAIRS_AFTER_BOTTLES -> handleClickMainEntry(
@@ -490,6 +497,31 @@ public final class AutoExperimentMacro {
 		}
 		if (clickSlot(client, menu, slot)) {
 			stepStarted = true;
+		}
+	}
+
+	private static void handleInitialRenewExperiments(Minecraft client) {
+		if (!isMainMenu(client)) {
+			if (stepElapsedTicks > MENU_TIMEOUT_TICKS) {
+				stopInternal("Expected Experimentation Table while checking renewal.");
+			}
+			return;
+		}
+
+		ChestMenu menu = currentMenu(client);
+		int renewSlot = findRenewExperimentsSlot(menu);
+		if (renewSlot == -1) {
+			enterStep(MacroStep.CLICK_CHRONOMATRON);
+			return;
+		}
+
+		if (prepareRenewalBottlesIfNeeded(client, menu, renewSlot, MacroStep.CHECK_INITIAL_RENEW_EXPERIMENTS)) {
+			return;
+		}
+
+		if (clickSlot(client, menu, renewSlot)) {
+			sendMessage("Renewed experiments before starting macro.");
+			enterStep(MacroStep.WAIT_AFTER_RENEW_EXPERIMENTS);
 		}
 	}
 
@@ -648,6 +680,8 @@ public final class AutoExperimentMacro {
 				return;
 			}
 			bottlePlan = plan;
+			bottlesThrown = 0;
+			afterBottlesTableStep = MacroStep.CLICK_SUPERPAIRS_AFTER_BOTTLES;
 			closeScreen(client);
 			sendMessage("Need level " + requiredLevel + ", throwing " + plan.count() + " "
 					+ plan.type().displayName() + ".");
@@ -782,6 +816,10 @@ public final class AutoExperimentMacro {
 			return;
 		}
 
+		if (prepareRenewalBottlesIfNeeded(client, menu, renewSlot, MacroStep.CHECK_RENEW_EXPERIMENTS)) {
+			return;
+		}
+
 		if (clickSlot(client, menu, renewSlot)) {
 			sendMessage("Renewed experiments, restarting macro.");
 			enterStep(MacroStep.WAIT_AFTER_RENEW_EXPERIMENTS);
@@ -822,20 +860,33 @@ public final class AutoExperimentMacro {
 			return;
 		}
 
+		boolean clickedSecondSlot = !activeSuperpairsClickFirstNext;
 		int slot = activeSuperpairsClickFirstNext ? activeSuperpairsPair.firstSlot() : activeSuperpairsPair.secondSlot();
 		if (!clickSuperpairsSlot(client, menu, slot)) {
 			return;
 		}
 
-		lastSuperpairsClickTick = stepElapsedTicks;
+		lastSuperpairsClickTick = clickedSecondSlot
+				? stepElapsedTicks + SUPERPAIRS_AFTER_PAIR_EXTRA_WAIT_TICKS
+				: stepElapsedTicks;
 		activeSuperpairsClickFirstNext = !activeSuperpairsClickFirstNext;
 		activeSuperpairsPairClicksRemaining--;
 		if (activeSuperpairsPairClicksRemaining <= 0) {
+			markSuperpairsPairExhausted(activeSuperpairsPair);
 			superpairsKnownHighTierSlots.remove(activeSuperpairsPair.firstSlot());
 			superpairsKnownHighTierSlots.remove(activeSuperpairsPair.secondSlot());
 			superpairsFirstSlotsByEnchant.remove(activeSuperpairsPair.reward());
 			activeSuperpairsPair = null;
 		}
+	}
+
+	private static void markSuperpairsPairExhausted(SuperpairsPair pair) {
+		if (pair == null) {
+			return;
+		}
+		superpairsExhaustedPairKeys.add(superpairsPairKey(pair.reward(), pair.firstSlot(), pair.secondSlot()));
+		superpairsIgnoredPrioritySlots.add(pair.firstSlot());
+		superpairsIgnoredPrioritySlots.add(pair.secondSlot());
 	}
 
 	private static SuperpairsPair scanSuperpairsBoard(ChestMenu menu) {
@@ -861,6 +912,9 @@ public final class AutoExperimentMacro {
 			if (reward.isBlank()) {
 				continue;
 			}
+			if (superpairsIgnoredPrioritySlots.contains(slotIndex)) {
+				continue;
+			}
 
 			Integer firstSlot = superpairsFirstSlotsByEnchant.get(reward);
 			if (firstSlot == null) {
@@ -877,6 +931,9 @@ public final class AutoExperimentMacro {
 					continue;
 				}
 				superpairsKnownHighTierSlots.add(slotIndex);
+				if (isSuperpairsPairExhausted(reward, firstSlot, slotIndex)) {
+					continue;
+				}
 				return new SuperpairsPair(reward, firstSlot, slotIndex, 0);
 			}
 		}
@@ -895,6 +952,16 @@ public final class AutoExperimentMacro {
 		return reward.equals(priorityRewardSignature(slot.getItem()));
 	}
 
+	private static boolean isSuperpairsPairExhausted(String reward, int firstSlot, int secondSlot) {
+		return superpairsExhaustedPairKeys.contains(superpairsPairKey(reward, firstSlot, secondSlot));
+	}
+
+	private static String superpairsPairKey(String reward, int firstSlot, int secondSlot) {
+		int lowSlot = Math.min(firstSlot, secondSlot);
+		int highSlot = Math.max(firstSlot, secondSlot);
+		return reward + ":" + lowSlot + ":" + highSlot;
+	}
+
 	private static boolean hasVisibleSuperpairsPriorityReward(ChestMenu menu) {
 		if (menu == null) {
 			return false;
@@ -905,6 +972,9 @@ public final class AutoExperimentMacro {
 			}
 			Slot slot = menu.slots.get(slotIndex);
 			if (slot == null || !slot.hasItem()) {
+				continue;
+			}
+			if (superpairsIgnoredPrioritySlots.contains(slotIndex)) {
 				continue;
 			}
 			ItemStack stack = slot.getItem();
@@ -1018,7 +1088,7 @@ public final class AutoExperimentMacro {
 				continue;
 			}
 			Slot slot = menu.slots.get(slotIndex);
-			if (slot != null && slot.hasItem()) {
+			if (slot != null && slot.hasItem() && !superpairsIgnoredPrioritySlots.contains(slotIndex)) {
 				return slotIndex;
 			}
 		}
@@ -1095,6 +1165,39 @@ public final class AutoExperimentMacro {
 		}
 	}
 
+	private static MacroStep afterBottlesTableStep() {
+		return afterBottlesTableStep == MacroStep.IDLE
+				? MacroStep.CLICK_SUPERPAIRS_AFTER_BOTTLES
+				: afterBottlesTableStep;
+	}
+
+	private static boolean prepareRenewalBottlesIfNeeded(
+			Minecraft client,
+			ChestMenu menu,
+			int renewSlot,
+			MacroStep retryStep) {
+		if (client == null || client.player == null || menu == null || renewSlot < 0 || renewSlot >= menu.slots.size()) {
+			return false;
+		}
+		int requiredLevel = renewRequiredLevel(menu.slots.get(renewSlot).getItem());
+		if (requiredLevel <= 0 || client.player.experienceLevel >= requiredLevel) {
+			return false;
+		}
+
+		BottlePlan plan = createBottlePlan(client, requiredLevel);
+		if (plan == null) {
+			return true;
+		}
+		bottlePlan = plan;
+		bottlesThrown = 0;
+		afterBottlesTableStep = retryStep;
+		closeScreen(client);
+		sendMessage("Need level " + requiredLevel + " to renew experiments, throwing "
+				+ plan.count() + " " + plan.type().displayName() + ".");
+		enterStep(MacroStep.ROTATE_FOR_BOTTLES);
+		return true;
+	}
+
 	private static BottlePlan createBottlePlan(Minecraft client, int targetLevel) {
 		BottleType type = targetLevel > TITANIC_LEVEL_THRESHOLD ? BottleType.TITANIC : BottleType.GRAND;
 		int slot = findBottleSlot(client, type);
@@ -1128,13 +1231,17 @@ public final class AutoExperimentMacro {
 		if (namedEntity != null) {
 			BlockPos nearbyTable = findNearestEnchantingTableBlock(client, namedEntity, 4);
 			if (nearbyTable != null) {
-				return Vec3.atCenterOf(nearbyTable);
+				return tableAimPoint(nearbyTable);
 			}
-			return namedEntity.add(0.0D, TABLE_ENTITY_Y_OFFSET, 0.0D);
+			return namedEntity.add(0.0D, TABLE_AIM_Y_OFFSET, 0.0D);
 		}
 
 		BlockPos tableBlock = findNearestEnchantingTableBlock(client, client.player.position(), TABLE_SEARCH_RADIUS);
-		return tableBlock == null ? null : Vec3.atCenterOf(tableBlock);
+		return tableBlock == null ? null : tableAimPoint(tableBlock);
+	}
+
+	private static Vec3 tableAimPoint(BlockPos tableBlock) {
+		return Vec3.atCenterOf(tableBlock).add(0.0D, TABLE_AIM_Y_OFFSET, 0.0D);
 	}
 
 	private static Vec3 findNamedExperimentationTableEntity(Minecraft client) {
@@ -1717,13 +1824,40 @@ public final class AutoExperimentMacro {
 				continue;
 			}
 			ItemStack stack = slot.getItem();
-			String text = normalizedStackText(stack);
-			if (text.contains("renew experiments")
-					&& (text.contains("click to purchase") || text.contains("purchase 1 additional charge"))) {
+			if (isRenewExperimentsItem(stack)) {
 				return slotIndex;
 			}
 		}
 		return -1;
+	}
+
+	private static boolean isRenewExperimentsItem(ItemStack stack) {
+		return normalizedStackName(stack).contains("renew experiments")
+				|| normalizedStackText(stack).contains("renew experiments");
+	}
+
+	private static int renewRequiredLevel(ItemStack stack) {
+		String text = normalizedStackText(stack);
+		int marker = text.indexOf("xp level");
+		if (marker == -1) {
+			return text.contains("cannot afford") && isRenewExperimentsItem(stack) ? RENEW_EXPERIMENTS_LEVEL_COST : 0;
+		}
+		int start = marker - 1;
+		while (start >= 0 && Character.isWhitespace(text.charAt(start))) {
+			start--;
+		}
+		int end = start + 1;
+		while (start >= 0 && Character.isDigit(text.charAt(start))) {
+			start--;
+		}
+		if (end <= start + 1) {
+			return 0;
+		}
+		try {
+			return Integer.parseInt(text.substring(start + 1, end));
+		} catch (NumberFormatException ignored) {
+			return 0;
+		}
 	}
 
 	private static boolean hasPendingExperiment(ChestMenu menu) {
@@ -1863,6 +1997,13 @@ public final class AutoExperimentMacro {
 		builder.append(stack.getDisplayName().getString()).append(' ');
 		builder.append(stack.getComponentsPatch()).append(' ');
 
+		ItemLore lore = stack.get(DataComponents.LORE);
+		if (lore != null) {
+			for (net.minecraft.network.chat.Component line : lore.lines()) {
+				builder.append(line.getString()).append(' ');
+			}
+		}
+
 		CustomData customData = stack.get(DataComponents.CUSTOM_DATA);
 		if (customData != null && !customData.isEmpty()) {
 			builder.append(customData.copyTag());
@@ -1994,6 +2135,7 @@ public final class AutoExperimentMacro {
 		lastSeenGuiContainerId = -1;
 		lastSeenGuiTitle = "";
 		reopenTableNextStep = MacroStep.IDLE;
+		afterBottlesTableStep = MacroStep.IDLE;
 		GuiClickThrottle.reset();
 		resetSuperpairsState();
 	}
@@ -2002,6 +2144,8 @@ public final class AutoExperimentMacro {
 		superpairsFirstSlotsByEnchant.clear();
 		superpairsKnownHighTierSlots.clear();
 		superpairsClickedRevealSlots.clear();
+		superpairsIgnoredPrioritySlots.clear();
+		superpairsExhaustedPairKeys.clear();
 		activeSuperpairsPair = null;
 		activeSuperpairsPairClicksRemaining = 0;
 		activeSuperpairsClickFirstNext = true;
@@ -2024,6 +2168,7 @@ public final class AutoExperimentMacro {
 		FIND_TABLE,
 		ROTATE_TO_TABLE,
 		OPEN_TABLE,
+		CHECK_INITIAL_RENEW_EXPERIMENTS,
 		CLICK_CHRONOMATRON,
 		SELECT_CHRONOMATRON,
 		WAIT_CHRONOMATRON_REWARD,
