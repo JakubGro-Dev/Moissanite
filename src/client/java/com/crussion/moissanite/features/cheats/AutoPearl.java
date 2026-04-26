@@ -6,7 +6,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.IntStream;
+import java.util.concurrent.ThreadLocalRandom;
 
 import com.crussion.moissanite.definitions.UiDefinitions;
 import com.crussion.moissanite.features.kuudra.KuudraNoPre;
@@ -35,6 +35,8 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.scores.DisplaySlot;
 import net.minecraft.world.scores.Objective;
@@ -45,11 +47,21 @@ import net.minecraft.world.scores.Scoreboard;
 public final class AutoPearl {
 	private static final String KUUDRA_HOLLOW = "Kuudra's Hollow";
 	private static final String PEARL_ID = "ENDER_PEARL";
-	private static final double ROTATION_MULTIPLIER = 0.4D;
+	private static final double DEFAULT_ROTATION_MULTIPLIER = 0.4D;
+	private static final double ROTATION_MULTIPLIER_MIN = 0.0D;
+	private static final double ROTATION_MULTIPLIER_MAX = 2.0D;
+	private static final double ROTATION_FINISH_YAW = 1.2D;
+	private static final double ROTATION_FINISH_PITCH = 1.2D;
+	private static final double INACCURACY_MIN = 0.0D;
+	private static final double INACCURACY_MAX = 1.0D;
+	private static final double MAX_INACCURACY_YAW_DEGREES = 4.0D;
+	private static final double MAX_INACCURACY_PITCH_DEGREES = 3.0D;
 	private static final int WAIT_AFTER_SWAP_TICKS = 2;
 	private static final int ROTATE_TIMEOUT_TICKS = 120;
 	private static final int SEQUENCE_TIMEOUT_TICKS = 200;
 	private static final long SEQUENCE_START_LEAD_MS = 1500L;
+	private static final double FLAT_BLOCK_CHECK_DISTANCE = 7.0D;
+	private static final double TRAJECTORY_EPSILON = 1.0E-6D;
 	private static final int TALISMAN_TIER_MIN = 0;
 	private static final int TALISMAN_TIER_MAX = 3;
 	private static final int KUUDRA_TIER_MIN = 1;
@@ -60,13 +72,19 @@ public final class AutoPearl {
 			{ 0, 2500, 3250, 4000, 5000, 5000 },
 			{ 0, 2250, 3000, 3500, 4250, 4250 }
 	};
-	private static final Pattern PICKUP_PROGRESS_PATTERN = Pattern.compile("(\\d{1,3})%");
+	private static final Pattern PICKUP_PROGRESS_PATTERN = Pattern.compile("\\[\\|+]\\s*(\\d+)%");
+	private static final Pattern LEGACY_PICKUP_PROGRESS_PATTERN = Pattern.compile("(\\d{1,3})%");
 	private static final Pattern KUUDRA_TIER_PATTERN = Pattern.compile("\\bt([1-5])\\b");
+	private static final long PICKUP_TITLE_TIMEOUT_MS = 750L;
 
 	private static final String SUPPLY_READY_MARKER = "bring supply chest here";
 	private static final String SUPPLY_RECEIVED_MARKER = "supplies received";
 	private static final String SUPPLY_PROGRESS_MARKER = "progress:";
 	private static final String SUPPLY_COMPLETE_MARKER = "complete";
+	private static final String CHEST_SLIPPED_MESSAGE = "you moved and the chest slipped out of your hands!";
+	private static final String LAVA_RETRIEVED_MESSAGE = "you retrieved some of elle's supplies from the lava!";
+	private static final String GHOST_MESSAGE_SUFFIX = "you were killed by kuudra follower and became a ghost.";
+	private static final long PEARL_TIMER_QUANTUM_MS = 25L;
 
 	private static final Identifier HUD_ELEMENT_ID = Identifier.fromNamespaceAndPath("moissanite", "auto_pearl_status");
 	private static final double HUD_POSITION_MIN = -10000.0D;
@@ -142,13 +160,12 @@ public final class AutoPearl {
 
 	private static boolean initialized;
 	private static boolean moveModeActive;
+	private static boolean runtimeEnabled = true;
 	private static boolean pearlThrownForCurrentCarry;
 	private static boolean disabledTriggerLogged;
 	private static boolean pickupTimerActive;
-	private static long pickupTimerStartMs = -1L;
 	private static long pickupTimerStartServerMs = -1L;
-	private static int pickupTimerDelayMs;
-	private static int lastPickupProgressPercent = -1;
+	private static long lastPickupTitleServerMs = -1L;
 	private static String lastBlockedReason = "";
 
 	private static SequenceStep currentStep = SequenceStep.IDLE;
@@ -198,6 +215,30 @@ public final class AutoPearl {
 		AutoPearl.moveModeActive = moveModeActive;
 	}
 
+	public static void onSystemChat(Component message) {
+		if (message == null) {
+			return;
+		}
+		if (!ScoreboardAreaMatcher.isInArea(KUUDRA_HOLLOW)) {
+			return;
+		}
+		if (KuudraPhaseTracker.getPhase() != KuudraPhaseTracker.PHASE_SUPPLY) {
+			return;
+		}
+
+		String normalized = TextNormalizer.normalize(message.getString());
+		if (!shouldResetFromSystemChat(normalized)) {
+			return;
+		}
+
+		sendDebug("Pickup tracking reset from chat.");
+		resetPickupTracking();
+		if (currentStep != SequenceStep.IDLE) {
+			sendDebug("Cancelling active pearl sequence after pickup reset.");
+			resetSequence();
+		}
+	}
+
 	public static void onTitleText(Component message) {
 		if (message == null) {
 			return;
@@ -210,12 +251,17 @@ public final class AutoPearl {
 		}
 
 		String normalized = TextNormalizer.normalize(message.getString());
-		if (normalized.isBlank() || !normalized.contains("|") || !normalized.contains("%")) {
+		if (normalized.isBlank()) {
 			return;
 		}
 
 		Matcher matcher = PICKUP_PROGRESS_PATTERN.matcher(normalized);
-		if (!matcher.find()) {
+		boolean matched = matcher.find();
+		if (!matched) {
+			matcher = LEGACY_PICKUP_PROGRESS_PATTERN.matcher(normalized);
+			matched = matcher.find();
+		}
+		if (!matched) {
 			return;
 		}
 
@@ -226,23 +272,43 @@ public final class AutoPearl {
 			return;
 		}
 
+		long nowServerMs = serverNowMs();
+		lastPickupTitleServerMs = nowServerMs;
+
 		if (percent == 0) {
-			if (!pickupTimerActive || lastPickupProgressPercent > 0 || pearlThrownForCurrentCarry) {
-				startPickupTimer();
-			}
-			lastPickupProgressPercent = 0;
+			startPickupTimer(nowServerMs);
 			return;
 		}
-		lastPickupProgressPercent = percent;
+		if (pickupTimerActive && percent >= 100) {
+			sendDebug("Pickup tracking completed at 100%.");
+			resetPickupTracking();
+			if (currentStep != SequenceStep.IDLE) {
+				sendDebug("Cancelling active pearl sequence after pickup completion.");
+				resetSequence();
+			}
+		}
+	}
+
+	private static boolean shouldResetFromSystemChat(String normalized) {
+		if (normalized == null || normalized.isBlank()) {
+			return false;
+		}
+		return CHEST_SLIPPED_MESSAGE.equals(normalized)
+				|| LAVA_RETRIEVED_MESSAGE.equals(normalized)
+				|| normalized.endsWith(GHOST_MESSAGE_SUFFIX);
 	}
 
 	private static void toggleEnabled() {
-		boolean next = !Boolean.TRUE.equals(UiDefinitions.AUTO_PEARL.get());
-		UiDefinitions.AUTO_PEARL.set(next);
-		if (!next) {
+		if (!isGuiEnabled()) {
+			sendMessage("Enable Auto Pearl in GUI first.");
+			return;
+		}
+
+		runtimeEnabled = !runtimeEnabled;
+		if (!runtimeEnabled) {
 			resetRuntimeState();
 		}
-		sendMessage(next ? "Enabled." : "Disabled.");
+		sendMessage(runtimeEnabled ? "Enabled." : "Disabled.");
 	}
 
 	private static void handleClientTick(Minecraft client) {
@@ -252,27 +318,50 @@ public final class AutoPearl {
 			resetRuntimeState();
 			return;
 		}
-		if (!Boolean.TRUE.equals(UiDefinitions.AUTO_PEARL.get())) {
+
+		boolean inKuudra = ScoreboardAreaMatcher.isInArea(KUUDRA_HOLLOW);
+		boolean inSupplyPhase = inKuudra && KuudraPhaseTracker.getPhase() == KuudraPhaseTracker.PHASE_SUPPLY;
+
+		if (inSupplyPhase) {
+			updateSupplyStates(client);
+			refreshPickupTracking();
+		}
+
+		if (!isGuiEnabled()) {
 			reportBlocked("Auto Pearl is disabled.");
-			handleDisabledTrigger(client);
-			resetSequence();
+			if (inSupplyPhase) {
+				handleDisabledTrigger(client);
+				resetSequence();
+			} else {
+				disabledTriggerLogged = false;
+				resetRuntimeState();
+			}
+			return;
+		}
+		if (!runtimeEnabled) {
+			reportBlocked("Auto Pearl toggle is disabled.");
+			if (inSupplyPhase) {
+				handleDisabledTrigger(client);
+				resetSequence();
+			} else {
+				disabledTriggerLogged = false;
+				resetRuntimeState();
+			}
 			return;
 		}
 
 		disabledTriggerLogged = false;
 
-		if (!ScoreboardAreaMatcher.isInArea(KUUDRA_HOLLOW)) {
+		if (!inKuudra) {
 			reportBlocked("Not in Kuudra's Hollow.");
 			resetRuntimeState();
 			return;
 		}
-		if (KuudraPhaseTracker.getPhase() != KuudraPhaseTracker.PHASE_SUPPLY) {
+		if (!inSupplyPhase) {
 			reportBlocked("Not in supply phase (phase " + KuudraPhaseTracker.getPhase() + ").");
 			resetRuntimeState();
 			return;
 		}
-
-		updateSupplyStates(client);
 
 		if (currentStep != SequenceStep.IDLE) {
 			clearBlockedReason();
@@ -344,35 +433,43 @@ public final class AutoPearl {
 		lastBlockedReason = "";
 	}
 
-	private static void startPickupTimer() {
-		pickupTimerDelayMs = resolvePickupDelayMs();
-		pickupTimerStartMs = nowMs();
-		pickupTimerStartServerMs = serverNowMs();
+	private static void startPickupTimer(long startServerMs) {
+		pickupTimerStartServerMs = startServerMs;
+		lastPickupTitleServerMs = startServerMs;
 		pickupTimerActive = true;
 		pearlThrownForCurrentCarry = false;
+		int pickupDelayMs = resolvePickupDelayMs();
 		int talismanTier = configuredTalismanTier();
 		int kuudraTier = configuredKuudraTier();
-		sendDebug("Pickup timer started at 0% -> " + pickupTimerDelayMs + "ms (talisman T" + talismanTier + ", kuudra T"
+		sendDebug("Pickup timer started at 0% -> " + pickupDelayMs + "ms (talisman T" + talismanTier + ", kuudra T"
 				+ kuudraTier + ").");
 	}
 
 	private static WaypointEvaluation evaluatePrimaryWaypoint(Minecraft client) {
-		if (!pickupTimerActive || pickupTimerStartMs < 0L) {
+		if (!pickupTimerActive || pickupTimerStartServerMs < 0L) {
 			return null;
 		}
 		updateSupplyStates(client);
-		ThrowPlan plan = buildThrowPlan(client);
-		if (plan == null) {
+		PrimaryPlans plans = buildThrowPlans(client);
+		if (plans == null) {
 			return null;
 		}
 
-		long timerRemainingMs = timeUntilThrowMs(plan.flightTimeMs());
-		long throwAtMs = nowMs() + timerRemainingMs;
-		return new WaypointEvaluation(plan, throwAtMs, timerRemainingMs);
-	}
+		TimedThrowPlan timedSky = timedPlan(plans.sky());
+		TimedThrowPlan timedFlat = timedPlan(plans.flat());
+		TimedThrowPlan selected = selectPreferredPlan(client, timedSky, timedFlat);
+		if (selected == null) {
+			return null;
+		}
 
-	private static long nowMs() {
-		return System.currentTimeMillis();
+		long timerRemainingMs = selected.timerRemainingMs();
+		long throwAtMs = serverNowMs() + timerRemainingMs;
+		return new WaypointEvaluation(
+				selected.plan(),
+				throwAtMs,
+				timerRemainingMs,
+				timedSky == null ? null : timedSky.plan(),
+				timedFlat == null ? null : timedFlat.plan());
 	}
 
 	private static long serverNowMs() {
@@ -380,28 +477,38 @@ public final class AutoPearl {
 		if (client != null && client.level != null) {
 			return client.level.getGameTime() * 50L;
 		}
-		return nowMs();
+		return System.currentTimeMillis();
 	}
 
 	private static long timeUntilThrowMs(long flightTimeMs) {
-		if (!pickupTimerActive || pickupTimerStartMs < 0L) {
+		if (!pickupTimerActive || pickupTimerStartServerMs < 0L) {
 			return Long.MAX_VALUE;
 		}
-		long elapsedSincePickupStart = elapsedSincePickupStartMs();
-		return pickupTimerDelayMs - flightTimeMs - elapsedSincePickupStart;
+		long rawRemainingMs = (long) resolvePickupDelayMs() - flightTimeMs - elapsedSincePickupStartMs();
+		long quantizedRemainingMs = (rawRemainingMs / PEARL_TIMER_QUANTUM_MS) * PEARL_TIMER_QUANTUM_MS;
+		return Math.max(0L, quantizedRemainingMs);
+	}
+
+	private static void refreshPickupTracking() {
+		if (!pickupTimerActive || lastPickupTitleServerMs < 0L) {
+			return;
+		}
+		if (serverNowMs() - lastPickupTitleServerMs <= PICKUP_TITLE_TIMEOUT_MS) {
+			return;
+		}
+
+		sendDebug("Pickup tracking timed out.");
+		resetPickupTracking();
+		if (currentStep != SequenceStep.IDLE) {
+			sendDebug("Pickup tracking timed out after sequence start; keeping locked throw time.");
+		}
 	}
 
 	private static long elapsedSincePickupStartMs() {
-		if (pickupTimerStartMs < 0L) {
+		if (pickupTimerStartServerMs < 0L) {
 			return 0L;
 		}
-		long elapsedWallMs = nowMs() - pickupTimerStartMs;
-		long elapsedServerMs = -1L;
-		if (pickupTimerStartServerMs >= 0L) {
-			elapsedServerMs = serverNowMs() - pickupTimerStartServerMs;
-		}
-		long elapsedMs = elapsedServerMs >= 0L ? Math.max(elapsedWallMs, elapsedServerMs) : elapsedWallMs;
-		return Math.max(0L, elapsedMs);
+		return Math.max(0L, serverNowMs() - pickupTimerStartServerMs);
 	}
 
 	private static int resolvePickupDelayMs() {
@@ -420,12 +527,38 @@ public final class AutoPearl {
 		if (detectedTier != null) {
 			return detectedTier;
 		}
-		return sliderToInt(UiDefinitions.AUTO_PEARL_KUUDRA_TIER.get(), KUUDRA_TIER_MAX, KUUDRA_TIER_MIN, KUUDRA_TIER_MAX);
+		return sliderToInt(UiDefinitions.AUTO_PEARL_KUUDRA_TIER.get(), KUUDRA_TIER_MAX, KUUDRA_TIER_MIN,
+				KUUDRA_TIER_MAX);
 	}
 
 	private static int sliderToInt(Double value, int fallback, int min, int max) {
 		double raw = value != null && Double.isFinite(value) ? value : fallback;
 		return Mth.clamp((int) Math.round(raw), min, max);
+	}
+
+	private static double sliderToDouble(Double value, double fallback, double min, double max) {
+		double raw = value != null && Double.isFinite(value) ? value : fallback;
+		return Mth.clamp(raw, min, max);
+	}
+
+	private static double configuredRotationMultiplier() {
+		return sliderToDouble(
+				UiDefinitions.AUTO_PEARL_ROTATION_MULTIPLIER.get(),
+				DEFAULT_ROTATION_MULTIPLIER,
+				ROTATION_MULTIPLIER_MIN,
+				ROTATION_MULTIPLIER_MAX);
+	}
+
+	private static double configuredInaccuracy() {
+		return sliderToDouble(UiDefinitions.AUTO_PEARL_INACCURACY.get(), 0.0D, INACCURACY_MIN, INACCURACY_MAX);
+	}
+
+	private static double randomInaccuracyOffset(double inaccuracy, double maxDegrees) {
+		if (inaccuracy <= 0.0D || maxDegrees <= 0.0D) {
+			return 0.0D;
+		}
+		double range = Mth.clamp(inaccuracy, INACCURACY_MIN, INACCURACY_MAX) * maxDegrees;
+		return ThreadLocalRandom.current().nextDouble(-range, range);
 	}
 
 	private static Integer detectKuudraTierFromScoreboard() {
@@ -527,37 +660,145 @@ public final class AutoPearl {
 		return SupplyState.UNKNOWN;
 	}
 
-	private static ThrowPlan buildThrowPlan(Minecraft client) {
+	private static PrimaryPlans buildThrowPlans(Minecraft client) {
 		if (client == null || client.player == null) {
 			return null;
 		}
 
-		Vec3 eyePos = new Vec3(client.player.getX(), client.player.getEyeY(), client.player.getZ());
-		SupplySpot targetSpot = resolveTargetSupply(eyePos);
+		Vec3 eyePos = getPlayerEyePos(client);
+		Vec3 pearlStart = getPearlSpawnPos(client);
+		if (eyePos == null || pearlStart == null) {
+			return null;
+		}
+
+		SupplySpot targetSpot = resolveTargetSupply(eyePos, PickupSpot.closestTo(eyePos));
 		if (targetSpot == null) {
 			return null;
 		}
 
-		TrajectorySolver.PearlSolution solution = TrajectorySolver.solvePearl(true, eyePos, targetSpot.location());
+		ThrowPlan skyPlan = createThrowPlan(true, pearlStart, targetSpot);
+		ThrowPlan flatPlan = createThrowPlan(false, pearlStart, targetSpot);
+		if (skyPlan == null && flatPlan == null) {
+			return null;
+		}
+		return new PrimaryPlans(skyPlan, flatPlan);
+	}
+
+	private static ThrowPlan createThrowPlan(boolean sky, Vec3 pearlStart, SupplySpot targetSpot) {
+		TrajectorySolver.PearlSolution solution = TrajectorySolver.solvePearl(sky, pearlStart, targetSpot.location());
 		if (solution == null || solution.solution() == null) {
 			return null;
 		}
-		return new ThrowPlan(targetSpot, solution.solution(), solution.flightTimeMs());
+		return new ThrowPlan(
+				targetSpot,
+				solution.solution(),
+				solution.yaw(),
+				solution.pitch(),
+				solution.flightTimeMs(),
+				sky);
+	}
+
+	private static TimedThrowPlan timedPlan(ThrowPlan plan) {
+		if (plan == null) {
+			return null;
+		}
+		return new TimedThrowPlan(plan, timeUntilThrowMs(plan.flightTimeMs()));
+	}
+
+	private static TimedThrowPlan selectPreferredPlan(Minecraft client, TimedThrowPlan skyPlan, TimedThrowPlan flatPlan) {
+		if (flatPlan != null && !isFlatPathBlocked(client, flatPlan.plan())) {
+			return flatPlan;
+		}
+		if (skyPlan != null) {
+			return skyPlan;
+		}
+		return flatPlan;
+	}
+
+	private static boolean isFlatPathBlocked(Minecraft client, ThrowPlan plan) {
+		if (client == null || client.level == null || client.player == null || plan == null || plan.sky()) {
+			return false;
+		}
+
+		Vec3 pearlStart = getPearlSpawnPos(client);
+		if (pearlStart == null) {
+			return false;
+		}
+
+		Vec3 position = pearlStart;
+		Vec3 velocity = initialPearlVelocity(plan);
+		double remainingDistance = FLAT_BLOCK_CHECK_DISTANCE;
+
+		for (int tick = 0; tick < TrajectorySolver.MAX_SIM_TICKS && remainingDistance > TRAJECTORY_EPSILON; tick++) {
+			double segmentLength = velocity.length();
+			if (segmentLength <= TRAJECTORY_EPSILON) {
+				return false;
+			}
+
+			double distanceToCheck = Math.min(segmentLength, remainingDistance);
+			Vec3 segmentEnd = position.add(velocity.scale(distanceToCheck / segmentLength));
+			HitResult hitResult = client.level.clip(new ClipContext(
+					position,
+					segmentEnd,
+					ClipContext.Block.COLLIDER,
+					ClipContext.Fluid.NONE,
+					client.player));
+			if (hitResult.getType() == HitResult.Type.BLOCK) {
+				return true;
+			}
+
+			remainingDistance -= distanceToCheck;
+			position = position.add(velocity);
+			velocity = new Vec3(
+					velocity.x * TrajectorySolver.DRAG,
+					(velocity.y * TrajectorySolver.DRAG) - TrajectorySolver.GRAVITY,
+					velocity.z * TrajectorySolver.DRAG);
+		}
+		return false;
+	}
+
+	private static Vec3 initialPearlVelocity(ThrowPlan plan) {
+		double yawRad = Math.toRadians(plan.yaw());
+		double pitchRad = Math.toRadians(plan.pitch());
+		double cosPitch = Math.cos(pitchRad);
+		double speed = TrajectorySolver.SPEED;
+		return new Vec3(
+				-Math.sin(yawRad) * cosPitch * speed,
+				-Math.sin(pitchRad) * speed,
+				Math.cos(yawRad) * cosPitch * speed);
 	}
 
 	private static SupplySpot resolveTargetSupply(Vec3 eyePos) {
-		PickupSpot pickup = PickupSpot.closestTo(eyePos);
-		SupplySpot mapped = mapPickupToSupply(pickup);
-		if (mapped != null && isSupplyAvailable(mapped)) {
-			return mapped;
-		}
+		return resolveTargetSupply(eyePos, PickupSpot.closestTo(eyePos));
+	}
 
+	private static SupplySpot resolveTargetSupply(Vec3 eyePos, PickupSpot pickup) {
+		SupplySpot confirmed = resolveTargetSupply(eyePos, pickup, false);
+		if (confirmed != null) {
+			return confirmed;
+		}
+		return resolveTargetSupply(eyePos, pickup, true);
+	}
+
+	private static SupplySpot resolveTargetSupply(Vec3 eyePos, PickupSpot pickup, boolean includeUnknown) {
 		SupplySpot preSpotSupply = resolvePreSpotSupply();
-		if (preSpotSupply != null && isSupplyAvailable(preSpotSupply)) {
+		boolean preSpotAvailable = preSpotSupply != null && isSupplyAvailable(preSpotSupply, includeUnknown);
+
+		if (pickup == PickupSpot.SQUARE && preSpotAvailable) {
 			return preSpotSupply;
 		}
 
-		return getClosestAvailableSupply(eyePos);
+		SupplySpot mapped = mapPickupToSupply(pickup);
+		if (mapped != null && isSupplyAvailable(mapped, includeUnknown)) {
+			return mapped;
+		}
+
+		SupplySpot closestAvailable = getClosestAvailableSupply(eyePos, includeUnknown);
+		if (closestAvailable != null) {
+			return closestAvailable;
+		}
+
+		return preSpotAvailable ? preSpotSupply : null;
 	}
 
 	private static SupplySpot mapPickupToSupply(PickupSpot pickup) {
@@ -598,12 +839,12 @@ public final class AutoPearl {
 		};
 	}
 
-	private static SupplySpot getClosestAvailableSupply(Vec3 eyePos) {
+	private static SupplySpot getClosestAvailableSupply(Vec3 eyePos, boolean includeUnknown) {
 		SupplySpot best = null;
 		double bestDistSq = Double.MAX_VALUE;
 
 		for (SupplySpot spot : SupplySpot.values()) {
-			if (!isSupplyAvailable(spot)) {
+			if (!isSupplyAvailable(spot, includeUnknown)) {
 				continue;
 			}
 			double distSq = distanceSquared(eyePos, spot.location());
@@ -623,16 +864,20 @@ public final class AutoPearl {
 	}
 
 	private static boolean isSupplyAvailable(SupplySpot spot) {
+		return isSupplyAvailable(spot, false);
+	}
+
+	private static boolean isSupplyAvailable(SupplySpot spot, boolean includeUnknown) {
 		SupplyState state = SUPPLY_STATES.getOrDefault(spot, SupplyState.UNKNOWN);
-		return state == SupplyState.NOTHING || state == SupplyState.UNKNOWN;
+		return state == SupplyState.NOTHING || (includeUnknown && state == SupplyState.UNKNOWN);
 	}
 
 	private static void startSequence(ThrowPlan plan, long throwAtMs) {
 		currentPlan = plan;
 		currentThrowAtMs = throwAtMs;
 		sequenceElapsedTicks = 0;
-		sendDebug("Sequence start -> target " + plan.target().name() + ", aim " + formatVec(plan.aimPoint())
-				+ ", flight " + plan.flightTimeMs() + "ms.");
+		sendDebug("Sequence start -> " + (plan.sky() ? "SKY" : "FLAT") + " target " + plan.target().name()
+				+ ", aim " + formatVec(plan.aimPoint()) + ", flight " + plan.flightTimeMs() + "ms.");
 		enterStep(SequenceStep.ROTATE);
 	}
 
@@ -667,12 +912,21 @@ public final class AutoPearl {
 		}
 		if (!stepStarted) {
 			stepStarted = true;
-			sendDebug("ROTATE: aiming at " + formatVec(currentPlan.aimPoint()) + ".");
-			boolean started = RotationController.rotateTo(
-					currentPlan.aimPoint().x,
-					currentPlan.aimPoint().y,
-					currentPlan.aimPoint().z,
-					ROTATION_MULTIPLIER);
+			double multiplier = configuredRotationMultiplier();
+			double inaccuracy = configuredInaccuracy();
+			double yaw = currentPlan.yaw() + randomInaccuracyOffset(inaccuracy, MAX_INACCURACY_YAW_DEGREES);
+			double pitch = Mth.clamp(
+					currentPlan.pitch() + randomInaccuracyOffset(inaccuracy, MAX_INACCURACY_PITCH_DEGREES),
+					-90.0D,
+					90.0D);
+			sendDebug("ROTATE: aiming yaw=" + yaw + ", pitch=" + pitch + ", multiplier=" + multiplier
+					+ ", inaccuracy=" + inaccuracy + ".");
+			boolean started = RotationController.rotateYawPitch(
+					yaw,
+					pitch,
+					multiplier,
+					ROTATION_FINISH_YAW,
+					ROTATION_FINISH_PITCH);
 			sendDebug("ROTATE: rotateTo " + actionStatus(started) + ".");
 			if (!started) {
 				sendMessage("Failed to start rotation.");
@@ -741,7 +995,12 @@ public final class AutoPearl {
 			resetSequence();
 			return;
 		}
-		if (timeUntilThrowMs(currentPlan.flightTimeMs()) > 0L) {
+		if (currentThrowAtMs < 0L) {
+			sendDebug("WAIT_FOR_THROW_WINDOW: missing locked throw time.");
+			resetSequence();
+			return;
+		}
+		if ((currentThrowAtMs - serverNowMs()) > 50L) {
 			return;
 		}
 
@@ -762,10 +1021,7 @@ public final class AutoPearl {
 				return;
 			}
 			pearlThrownForCurrentCarry = true;
-			pickupTimerActive = false;
-			pickupTimerStartMs = -1L;
-			pickupTimerStartServerMs = -1L;
-			pickupTimerDelayMs = 0;
+			resetPickupTracking();
 		}
 
 		if (waitedAfterAction(1)) {
@@ -807,13 +1063,15 @@ public final class AutoPearl {
 		enterStep(SequenceStep.IDLE);
 	}
 
+	private static void resetPickupTracking() {
+		pickupTimerActive = false;
+		pickupTimerStartServerMs = -1L;
+		lastPickupTitleServerMs = -1L;
+	}
+
 	private static void resetCarryState() {
 		pearlThrownForCurrentCarry = false;
-		pickupTimerActive = false;
-		pickupTimerStartMs = -1L;
-		pickupTimerStartServerMs = -1L;
-		pickupTimerDelayMs = 0;
-		lastPickupProgressPercent = -1;
+		resetPickupTracking();
 	}
 
 	private static void resetRuntimeState() {
@@ -831,7 +1089,7 @@ public final class AutoPearl {
 	}
 
 	private static void renderOverlay(GuiGraphics graphics) {
-		if (graphics == null) {
+		if (graphics == null || !isGuiEnabled()) {
 			return;
 		}
 		if (moveModeActive) {
@@ -905,7 +1163,7 @@ public final class AutoPearl {
 	}
 
 	private static int resolveHudColor() {
-		return Boolean.TRUE.equals(UiDefinitions.AUTO_PEARL.get()) ? ENABLED_COLOR : DISABLED_COLOR;
+		return runtimeEnabled ? ENABLED_COLOR : DISABLED_COLOR;
 	}
 
 	private static double getConfiguredX() {
@@ -945,6 +1203,10 @@ public final class AutoPearl {
 		return Boolean.TRUE.equals(UiDefinitions.AUTO_PEARL_DEBUG.get());
 	}
 
+	private static boolean isGuiEnabled() {
+		return Boolean.TRUE.equals(UiDefinitions.AUTO_PEARL.get());
+	}
+
 	private static String actionStatus(boolean success) {
 		return success ? "ok" : "failed";
 	}
@@ -954,6 +1216,20 @@ public final class AutoPearl {
 			return "(null)";
 		}
 		return String.format(Locale.ROOT, "(%.2f, %.2f, %.2f)", vec.x, vec.y, vec.z);
+	}
+
+	private static Vec3 getPlayerEyePos(Minecraft client) {
+		if (client == null || client.player == null) {
+			return null;
+		}
+		return new Vec3(client.player.getX(), client.player.getEyeY(), client.player.getZ());
+	}
+
+	private static Vec3 getPearlSpawnPos(Minecraft client) {
+		if (client == null || client.player == null) {
+			return null;
+		}
+		return new Vec3(client.player.getX(), client.player.getY() + 1.6D, client.player.getZ());
 	}
 
 	private enum SequenceStep {
@@ -1046,10 +1322,17 @@ public final class AutoPearl {
 		}
 	}
 
-	private record ThrowPlan(SupplySpot target, Vec3 aimPoint, long flightTimeMs) {
+	private record ThrowPlan(SupplySpot target, Vec3 aimPoint, float yaw, float pitch, long flightTimeMs, boolean sky) {
 	}
 
-	private record WaypointEvaluation(ThrowPlan plan, long throwAtMs, long timerRemainingMs) {
+	private record PrimaryPlans(ThrowPlan sky, ThrowPlan flat) {
+	}
+
+	private record TimedThrowPlan(ThrowPlan plan, long timerRemainingMs) {
+	}
+
+	private record WaypointEvaluation(ThrowPlan plan, long throwAtMs, long timerRemainingMs, ThrowPlan skyPlan,
+			ThrowPlan flatPlan) {
 	}
 
 	private record DrawState(String text, int argbColor, int drawWidth, int drawHeight) {
@@ -1060,227 +1343,545 @@ public final class AutoPearl {
 
 	private static final class TrajectorySolver {
 		private static final double GRAVITY = 0.03D;
-		private static final double SPEED = 1.5D;
 		private static final double DRAG = 0.99D;
-		private static final int MAX_TICKS = 100;
-		private static final int REFINE_STEPS = 100;
-		private static final int REFINE_ITERATIONS = 50;
-		private static final int GRID_STEPS = 100;
-		private static final double HIT_RADIUS_SQ = 0.7D * 0.7D;
-		private static final double TOLERANCE_SQ = 0.1D * 0.1D;
+		private static final double SPEED = 1.5D;
+		private static final double TICK_MS = 50.0D;
+		private static final int MAX_SIM_TICKS = 120;
+		private static final int SOLVER_ITERATIONS = 20;
+		private static final double MIN_THETA = Math.toRadians(0.5D);
+		private static final double MAX_THETA = Math.toRadians(89.5D);
+		private static final double MIN_SKY_THETA = Math.toRadians(41.0D);
+		private static final double MAX_FLAT_THETA = Math.toRadians(40.0D);
+		private static final double EPS = Math.toRadians(0.05D);
+		private static final double ONE_MINUS_DRAG = 1.0D - DRAG;
+		private static final double INV_ONE_MINUS_DRAG = 1.0D / ONE_MINUS_DRAG;
+		private static final double LOG_DRAG = Math.log(DRAG);
+		private static final double BASE_RADIUS = 0.5D;
+		private static final double MAX_RADIUS = 2.0D;
+		private static final double RADIUS_STEP = 0.25D;
+		private static final int REFINE_ROUNDS = 6;
+		private static final double REFINE_INIT_STEP = Math.toRadians(0.6D);
+		private static final double COARSE_SCAN_STEP = Math.toRadians(0.5D);
+		private static final double SWEEP_RANGE = Math.toRadians(2.0D);
+		private static final double SWEEP_STEP_COARSE = Math.toRadians(0.2D);
+		private static final double SWEEP_STEP_FINE = Math.toRadians(0.1D);
+		private static final double Y_CAP_EPS = 1.0E-4D;
 		private static final int SKY_DISTANCE = 30;
 		private static final int FLAT_DISTANCE = 15;
-		private static final double MIN_THETA = 0.01D;
-		private static final double MAX_THETA = (Math.PI / 2.0D) - 0.01D;
-		private static final double INITIAL_REFINE_DEG = 1.0D;
-		private static final double FLAT_ANGLE_BIAS_DEG = 0.4D;
-		private static final double MIN_SKY_THETA = Math.toRadians(34.0D);
-		private static final double MAX_FLAT_THETA = Math.toRadians(32.0D);
-		private static final double TICK_MS = 50.0D;
+		private static final double[] DRAG_POW = createDragPow();
+		private static final ThreadLocal<Scratch> SCRATCH = ThreadLocal.withInitial(Scratch::new);
 
 		private TrajectorySolver() {
 		}
 
 		private static PearlSolution solvePearl(boolean sky, Vec3 start, Vec3 target) {
-			double dx = target.x - start.x;
-			double dz = target.z - start.z;
-			double horizontalDist = Math.hypot(dx, dz);
-
-			if (horizontalDist < 1.0D) {
-				if (!sky) {
-					return null;
-				}
-				return new PearlSolution(new Vec3(start.x, start.y + SKY_DISTANCE, start.z), 4500L, 0.0F, -90.0F);
+			double aimDistance = sky ? SKY_DISTANCE : FLAT_DISTANCE;
+			double targetY = target.y + 0.5D;
+			double targetX = target.x;
+			double targetZ = target.z;
+			double startX = start.x;
+			double startY = start.y;
+			double startZ = start.z;
+			double deltaX = targetX - startX;
+			double deltaZ = targetZ - startZ;
+			double deltaY = targetY - startY;
+			double horizontalDist = Math.hypot(deltaX, deltaZ);
+			if (horizontalDist < 0.5D) {
+				return null;
 			}
 
 			double invLength = 1.0D / horizontalDist;
-			double ux = dx * invLength;
-			double uz = dz * invLength;
+			double ux = deltaX * invLength;
+			double uz = deltaZ * invLength;
+			double minTheta = sky ? MIN_SKY_THETA : MIN_THETA;
+			double maxTheta = sky ? MAX_THETA : MAX_FLAT_THETA;
+			double maxReachableTheta = maxReachableTheta(horizontalDist);
+			if (Double.isNaN(maxReachableTheta)) {
+				return null;
+			}
+			maxTheta = Math.min(maxTheta, maxReachableTheta - EPS);
+			if (maxTheta <= minTheta) {
+				return null;
+			}
 
-			SearchResult best = searchInitialBestAngle(start, target, ux, uz, sky);
+			Scratch scratch = SCRATCH.get();
+			RefineResult best = null;
+			for (double radius = BASE_RADIUS; radius <= MAX_RADIUS + 1.0E-9D; radius += RADIUS_STEP) {
+				double radiusSq = radius * radius;
+				boolean allowFineSweep = radius + RADIUS_STEP > MAX_RADIUS + 1.0E-9D;
+				RefineResult attempt = solveWithBudgetAndSweepFallback(
+						scratch,
+						horizontalDist,
+						deltaY,
+						minTheta,
+						maxTheta,
+						startX,
+						startY,
+						startZ,
+						targetX,
+						targetZ,
+						targetY,
+						ux,
+						uz,
+						radiusSq,
+						allowFineSweep);
+				if (attempt != null && attempt.sim.hit) {
+					best = attempt;
+					break;
+				}
+			}
 			if (best == null) {
 				return null;
 			}
 
-			double refineRange = Math.toRadians(INITIAL_REFINE_DEG);
-			for (int iter = 0; iter < REFINE_ITERATIONS; iter++) {
-				double lower = Math.max(MIN_THETA, best.theta - refineRange);
-				double upper = Math.min(MAX_THETA, best.theta + refineRange);
+			double vx = best.vx;
+			double vy = best.vy;
+			double vz = best.vz;
+			double cos = best.cos;
+			double flatSpeed = SPEED * cos;
+			float yaw = (float) (Math.toDegrees(Math.atan2(vz, vx)) - 90.0D);
+			float pitch = (float) -Math.toDegrees(Math.atan2(vy, flatSpeed));
+			double scale = aimDistance / SPEED;
+			Vec3 aimPoint = new Vec3(
+					startX + (vx * scale),
+					startY + (vy * scale),
+					startZ + (vz * scale));
 
-				SearchResult refined = searchRefinedBestAngle(lower, upper, start, target, ux, uz, sky);
-				if (refined == null || refined.errorSq >= best.errorSq) {
-					break;
-				}
-
-				best = refined;
-				if (best.errorSq < TOLERANCE_SQ) {
-					break;
-				}
-				refineRange *= 0.5D;
-			}
-
-			double finalTheta = best.theta;
-			int finalTick = best.tick;
-			if (!sky) {
-				finalTheta = Math.min(MAX_FLAT_THETA,
-						Math.max(MIN_THETA, finalTheta + Math.toRadians(FLAT_ANGLE_BIAS_DEG)));
-			}
-
-			Vec3 velocity = computeVelocity(finalTheta, ux, uz);
-			if (!sky) {
-				SimResult finalSim = simulateTrajectory(start, velocity, target);
-				if (finalSim.hit && finalSim.hitTick >= 0) {
-					finalTick = finalSim.hitTick;
-				}
-			}
-
-			Vec3 aimPoint = computeAimPoint(start, velocity, sky ? SKY_DISTANCE : FLAT_DISTANCE);
-			long flightTimeMs = Math.round(finalTick * TICK_MS);
-			double flatSpeed = Math.hypot(velocity.x, velocity.z);
-			float yaw = (float) (Math.toDegrees(Math.atan2(velocity.z, velocity.x)) - 90.0D);
-			float pitch = (float) -Math.toDegrees(Math.atan2(velocity.y, flatSpeed));
-
-			return new PearlSolution(aimPoint, flightTimeMs, yaw, pitch);
+			return new PearlSolution(aimPoint, Math.round(best.sim.hitTick * TICK_MS), yaw, pitch);
 		}
 
-		private static SearchResult searchRefinedBestAngle(double minTheta, double maxTheta, Vec3 start, Vec3 target,
-				double ux, double uz, boolean sky) {
-			SearchResult best = null;
-			double clampedMin = Math.max(minTheta, sky ? MIN_SKY_THETA : MIN_THETA);
-			double clampedMax = Math.min(maxTheta, sky ? MAX_THETA : MAX_FLAT_THETA);
+		private static RefineResult solveWithBudgetAndSweepFallback(Scratch scratch, double horizontalDist,
+				double verticalDelta, double minTheta, double maxTheta, double startX, double startY, double startZ,
+				double targetX, double targetZ, double targetY, double ux, double uz, double radiusSq,
+				boolean allowFineSweep) {
+			Double theta = solveTheta(horizontalDist, verticalDelta, minTheta, maxTheta);
+			if (theta == null) {
+				RefineResult coarseScan = globalCoarseScan(
+						scratch,
+						minTheta,
+						maxTheta,
+						horizontalDist,
+						startX,
+						startY,
+						startZ,
+						targetX,
+						targetZ,
+						targetY,
+						ux,
+						uz,
+						radiusSq);
+				if (coarseScan != null) {
+					theta = coarseScan.theta;
+					if (coarseScan.sim.hit) {
+						return coarseScan;
+					}
+				} else {
+					theta = 0.5D * (minTheta + maxTheta);
+				}
+			}
 
-			for (int i = 0; i <= REFINE_STEPS; i++) {
-				double theta = clampedMin + ((clampedMax - clampedMin) * i / REFINE_STEPS);
-				Vec3 velocity = computeVelocity(theta, ux, uz);
-				SimResult sim = simulateTrajectory(start, velocity, target);
-				if (!sim.hit) {
+			RefineResult best = scratch.r0;
+			evalTheta(best, scratch.sim0, theta, horizontalDist, startX, startY, startZ, targetX, targetZ, targetY, ux,
+					uz, radiusSq);
+			double step = REFINE_INIT_STEP;
+			double bestTheta = theta;
+			for (int round = 0; round < REFINE_ROUNDS; round++) {
+				double lower = clamp(bestTheta - step, minTheta, maxTheta);
+				double upper = clamp(bestTheta + step, minTheta, maxTheta);
+				RefineResult lowerResult = scratch.r1;
+				RefineResult upperResult = scratch.r2;
+				evalTheta(lowerResult, scratch.sim1, lower, horizontalDist, startX, startY, startZ, targetX, targetZ,
+						targetY, ux, uz, radiusSq);
+				evalTheta(upperResult, scratch.sim2, upper, horizontalDist, startX, startY, startZ, targetX, targetZ,
+						targetY, ux, uz, radiusSq);
+				best = better(best, lowerResult);
+				best = better(best, upperResult);
+				bestTheta = best.theta;
+				if (best.sim.hit && best.sim.hitXZDist2 <= 1.0E-6D) {
+					return best;
+				}
+				step *= 0.5D;
+			}
+			if (best.sim.hit) {
+				return best;
+			}
+
+			RefineResult coarseSweep = sweepAround(
+					scratch,
+					bestTheta,
+					SWEEP_RANGE,
+					SWEEP_STEP_COARSE,
+					minTheta,
+					maxTheta,
+					horizontalDist,
+					startX,
+					startY,
+					startZ,
+					targetX,
+					targetZ,
+					targetY,
+					ux,
+					uz,
+					radiusSq);
+			best = better(best, coarseSweep);
+			if (best.sim.hit) {
+				return best;
+			}
+			if (allowFineSweep) {
+				RefineResult fineSweep = sweepAround(
+						scratch,
+						bestTheta,
+						SWEEP_RANGE,
+						SWEEP_STEP_FINE,
+						minTheta,
+						maxTheta,
+						horizontalDist,
+						startX,
+						startY,
+						startZ,
+						targetX,
+						targetZ,
+						targetY,
+						ux,
+						uz,
+						radiusSq);
+				best = better(best, fineSweep);
+			}
+			return best;
+		}
+
+		private static RefineResult sweepAround(Scratch scratch, double centerTheta, double sweepRange, double sweepStep,
+				double minTheta, double maxTheta, double horizontalDist, double startX, double startY, double startZ,
+				double targetX, double targetZ, double targetY, double ux, double uz, double radiusSq) {
+			RefineResult best = null;
+			int steps = (int) Math.ceil(sweepRange / sweepStep);
+			for (int step = 0; step <= steps; step++) {
+				double upperTheta = centerTheta + (step * sweepStep);
+				if (upperTheta >= minTheta && upperTheta <= maxTheta) {
+					RefineResult candidate = scratch.tmpPick();
+					evalTheta(candidate, candidate.sim, upperTheta, horizontalDist, startX, startY, startZ, targetX,
+							targetZ, targetY, ux, uz, radiusSq);
+					best = better(best, candidate);
+					if (best.sim.hit) {
+						return best;
+					}
+				}
+				if (step == 0) {
 					continue;
 				}
 
-				SearchResult current = new SearchResult(theta, sim.errorSq, sim.hitTick);
-				if (best == null || isBetter(current, best, sky)) {
-					best = current;
+				double lowerTheta = centerTheta - (step * sweepStep);
+				if (lowerTheta >= minTheta && lowerTheta <= maxTheta) {
+					RefineResult candidate = scratch.tmpPick();
+					evalTheta(candidate, candidate.sim, lowerTheta, horizontalDist, startX, startY, startZ, targetX,
+							targetZ, targetY, ux, uz, radiusSq);
+					best = better(best, candidate);
+					if (best.sim.hit) {
+						return best;
+					}
 				}
 			}
 			return best;
 		}
 
-		private static SearchResult searchInitialBestAngle(Vec3 start, Vec3 target, double ux, double uz, boolean sky) {
-			double minTheta = sky ? MIN_SKY_THETA : MIN_THETA;
-			double maxTheta = sky ? MAX_THETA : MAX_FLAT_THETA;
-			SearchResult[] best = new SearchResult[1];
-
-			IntStream.rangeClosed(0, GRID_STEPS).parallel().forEach(i -> {
-				double theta = minTheta + ((maxTheta - minTheta) * i / GRID_STEPS);
-				Vec3 velocity = computeVelocity(theta, ux, uz);
-				SimResult sim = simulateTrajectory(start, velocity, target);
-				if (!sim.hit) {
-					return;
-				}
-
-				SearchResult candidate = new SearchResult(theta, sim.errorSq, sim.hitTick);
-				synchronized (best) {
-					if (best[0] == null || isBetter(candidate, best[0], sky)) {
-						best[0] = candidate;
-					}
-				}
-			});
-
-			return best[0];
-		}
-
-		private static boolean isBetter(SearchResult candidate, SearchResult current, boolean sky) {
-			if (candidate.errorSq < current.errorSq) {
-				return true;
-			}
-			if (candidate.errorSq > current.errorSq) {
-				return false;
-			}
-			return sky ? candidate.theta > current.theta : candidate.theta < current.theta;
-		}
-
-		private static SimResult simulateTrajectory(Vec3 start, Vec3 initialVelocity, Vec3 target) {
-			double x = start.x;
-			double y = start.y;
-			double z = start.z;
-			double vx = initialVelocity.x;
-			double vy = initialVelocity.y;
-			double vz = initialVelocity.z;
-
-			double sx = start.x;
-			double sy = start.y;
-			double sz = start.z;
-			double tx = target.x;
-			double ty = target.y;
-			double tz = target.z;
-
-			double dx = tx - x;
-			double dy = ty - y;
-			double dz = tz - z;
-			double bestErrorSq = (dx * dx) + (dy * dy) + (dz * dz);
-			int bestTick = -1;
-
-			double maxDistanceSq = bestErrorSq * 4.0D;
-			double minY = ty - 5.0D;
-
-			for (int tick = 0; tick < MAX_TICKS; tick++) {
-				x += vx;
-				y += vy;
-				z += vz;
-
-				dx = tx - x;
-				dy = ty - y;
-				dz = tz - z;
-				double errorSq = (dx * dx) + (dy * dy) + (dz * dz);
-				if (errorSq < bestErrorSq) {
-					bestErrorSq = errorSq;
-					bestTick = tick;
-				}
-				if (errorSq < HIT_RADIUS_SQ) {
-					return new SimResult(true, errorSq, tick);
-				}
-
-				double sxDiff = x - sx;
-				double syDiff = y - sy;
-				double szDiff = z - sz;
-				double distSqFromStart = (sxDiff * sxDiff) + (syDiff * syDiff) + (szDiff * szDiff);
-				if (y < minY || distSqFromStart > maxDistanceSq) {
-					break;
-				}
-
-				vx *= DRAG;
-				vy = (vy - GRAVITY) * DRAG;
-				vz *= DRAG;
-			}
-
-			return new SimResult(false, bestErrorSq, bestTick);
-		}
-
-		private static Vec3 computeVelocity(double theta, double ux, double uz) {
+		private static void evalTheta(RefineResult result, SimResult sim, double theta, double horizontalDist,
+				double startX, double startY, double startZ, double targetX, double targetZ, double targetY, double ux,
+				double uz, double radiusSq) {
 			double cos = Math.cos(theta);
 			double sin = Math.sin(theta);
-			return new Vec3(SPEED * cos * ux, SPEED * sin, SPEED * cos * uz);
+			double flatSpeed = SPEED * cos;
+			double vx = flatSpeed * ux;
+			double vy = SPEED * sin;
+			double vz = flatSpeed * uz;
+			int tickCap = estimateTickCap(horizontalDist, flatSpeed);
+			simulateTopCap(sim, startX, startY, startZ, vx, vy, vz, targetX, targetZ, targetY, radiusSq, tickCap);
+			if (!sim.hit && sim.planeCrossTick < 0 && tickCap < MAX_SIM_TICKS) {
+				simulateTopCap(sim, startX, startY, startZ, vx, vy, vz, targetX, targetZ, targetY, radiusSq,
+						MAX_SIM_TICKS);
+			}
+
+			result.theta = theta;
+			result.cos = cos;
+			result.vx = vx;
+			result.vy = vy;
+			result.vz = vz;
+			result.sim = sim;
 		}
 
-		private static Vec3 computeAimPoint(Vec3 start, Vec3 velocity, double distance) {
-			double norm = Math.sqrt((velocity.x * velocity.x) + (velocity.y * velocity.y) + (velocity.z * velocity.z));
-			if (norm < 1.0e-8D) {
-				return start;
+		private static void simulateTopCap(SimResult sim, double startX, double startY, double startZ, double vx,
+				double vy, double vz, double targetX, double targetZ, double targetY, double radiusSq, int maxTicks) {
+			if (maxTicks > MAX_SIM_TICKS) {
+				maxTicks = MAX_SIM_TICKS;
 			}
-			double invNorm = 1.0D / norm;
-			return new Vec3(
-					start.x + (velocity.x * invNorm * distance),
-					start.y + (velocity.y * invNorm * distance),
-					start.z + (velocity.z * invNorm * distance));
+			if (maxTicks <= 0) {
+				maxTicks = 1;
+			}
+
+			double prevX = startX;
+			double prevY = startY;
+			double prevZ = startZ;
+			double bestCrossXZDist2 = Double.POSITIVE_INFINITY;
+			int planeCrossTick = -1;
+
+			for (int tick = 1; tick <= maxTicks; tick++) {
+				double dragPow = DRAG_POW[tick];
+				double dragDistanceFactor = 1.0D - dragPow;
+				double x = startX + (vx * dragDistanceFactor * INV_ONE_MINUS_DRAG);
+				double z = startZ + (vz * dragDistanceFactor * INV_ONE_MINUS_DRAG);
+				double yVelocityComponent = vy * dragDistanceFactor * INV_ONE_MINUS_DRAG;
+				double gravityComponent = GRAVITY * (tick - (dragDistanceFactor * INV_ONE_MINUS_DRAG))
+						* INV_ONE_MINUS_DRAG;
+				double y = startY + yVelocityComponent - gravityComponent;
+
+				if (planeCrossTick < 0 && prevY > targetY && y <= targetY) {
+					planeCrossTick = tick;
+				}
+
+				double segmentX = x - prevX;
+				double segmentY = y - prevY;
+				double segmentZ = z - prevZ;
+				double segmentLengthSq = (segmentX * segmentX) + (segmentY * segmentY) + (segmentZ * segmentZ);
+				if (segmentLengthSq > 1.0E-16D) {
+					double offsetX = prevX - targetX;
+					double offsetY = prevY - targetY;
+					double offsetZ = prevZ - targetZ;
+					double projection = -((offsetX * segmentX) + (offsetY * segmentY) + (offsetZ * segmentZ))
+							/ segmentLengthSq;
+					double clampedProjection = projection < 0.0D ? 0.0D : Math.min(1.0D, projection);
+
+					double closestX = prevX + (segmentX * clampedProjection);
+					double closestY = prevY + (segmentY * clampedProjection);
+					double closestZ = prevZ + (segmentZ * clampedProjection);
+					if (closestY >= targetY - Y_CAP_EPS) {
+						double deltaClosestX = closestX - targetX;
+						double deltaClosestY = closestY - targetY;
+						double deltaClosestZ = closestZ - targetZ;
+						double hitDistSq = (deltaClosestX * deltaClosestX) + (deltaClosestY * deltaClosestY)
+								+ (deltaClosestZ * deltaClosestZ);
+
+						double hitXZDeltaX = closestX - targetX;
+						double hitXZDeltaZ = closestZ - targetZ;
+						double hitXZDist2 = (hitXZDeltaX * hitXZDeltaX) + (hitXZDeltaZ * hitXZDeltaZ);
+						if (hitXZDist2 < bestCrossXZDist2) {
+							bestCrossXZDist2 = hitXZDist2;
+						}
+
+						if (radiusSq > 0.0D && hitDistSq <= radiusSq) {
+							sim.hit = true;
+							sim.hitTick = tick;
+							sim.bestCrossXZDist2 = bestCrossXZDist2;
+							sim.hitXZDist2 = hitXZDist2;
+							sim.planeCrossTick = planeCrossTick;
+							return;
+						}
+					}
+				}
+
+				prevX = x;
+				prevY = y;
+				prevZ = z;
+			}
+
+			sim.hit = false;
+			sim.hitTick = -1;
+			sim.bestCrossXZDist2 = bestCrossXZDist2;
+			sim.hitXZDist2 = Double.POSITIVE_INFINITY;
+			sim.planeCrossTick = planeCrossTick;
+		}
+
+		private static Double solveTheta(double horizontalDist, double verticalDelta, double minTheta, double maxTheta) {
+			double lower = minTheta;
+			double upper = maxTheta;
+			Double lowerError = verticalError(lower, horizontalDist, verticalDelta);
+			Double upperError = verticalError(upper, horizontalDist, verticalDelta);
+			if (lowerError == null || upperError == null || (lowerError * upperError) > 0.0D) {
+				return null;
+			}
+
+			for (int iteration = 0; iteration < SOLVER_ITERATIONS; iteration++) {
+				double theta = 0.5D * (lower + upper);
+				Double error = verticalError(theta, horizontalDist, verticalDelta);
+				if (error == null) {
+					return null;
+				}
+				if (Math.abs(upper - lower) < 1.0E-6D) {
+					return theta;
+				}
+				if ((lowerError * error) <= 0.0D) {
+					upper = theta;
+				} else {
+					lower = theta;
+					lowerError = error;
+				}
+			}
+			return 0.5D * (lower + upper);
+		}
+
+		private static double maxReachableTheta(double horizontalDist) {
+			double ratio = (horizontalDist * ONE_MINUS_DRAG) / SPEED;
+			if (ratio >= 1.0D) {
+				return Double.NaN;
+			}
+			if (ratio <= 0.0D) {
+				return MAX_THETA;
+			}
+			return Math.acos(ratio);
+		}
+
+		private static Double verticalError(double theta, double horizontalDist, double verticalDelta) {
+			double cos = Math.cos(theta);
+			if (cos < 1.0E-9D) {
+				return null;
+			}
+			int flightTicks = computeFlightTicksHoriz(horizontalDist, SPEED * cos);
+			if (flightTicks <= 0) {
+				return null;
+			}
+			double displacement = verticalDisplacement(theta, flightTicks);
+			return displacement - verticalDelta;
+		}
+
+		private static int computeFlightTicksHoriz(double horizontalDist, double horizontalVelocity) {
+			double ratio = (horizontalDist * ONE_MINUS_DRAG) / horizontalVelocity;
+			if (ratio <= 0.0D || ratio >= 1.0D) {
+				return -1;
+			}
+			double rawTicks = Math.log1p(-ratio) / LOG_DRAG;
+			int ticks = (int) Math.ceil(rawTicks - 1.0E-12D);
+			return ticks > 0 ? ticks : -1;
+		}
+
+		private static double verticalDisplacement(double theta, int ticks) {
+			if (ticks < 0) {
+				return Double.NaN;
+			}
+
+			double verticalVelocity = SPEED * Math.sin(theta);
+			double dragPow = ticks <= MAX_SIM_TICKS ? DRAG_POW[ticks] : Math.pow(DRAG, ticks);
+			double dragDistanceFactor = 1.0D - dragPow;
+			double velocityComponent = verticalVelocity * dragDistanceFactor * INV_ONE_MINUS_DRAG;
+			double gravityComponent = GRAVITY * (ticks - (dragDistanceFactor * INV_ONE_MINUS_DRAG))
+					* INV_ONE_MINUS_DRAG;
+			return velocityComponent - gravityComponent;
+		}
+
+		private static int estimateTickCap(double horizontalDist, double horizontalVelocity) {
+			int flightTicks = computeFlightTicksHoriz(horizontalDist, horizontalVelocity);
+			if (flightTicks <= 0) {
+				return MAX_SIM_TICKS;
+			}
+			int tickCap = flightTicks + 20;
+			if (tickCap < 40) {
+				tickCap = 40;
+			}
+			return Math.min(tickCap, MAX_SIM_TICKS);
+		}
+
+		private static RefineResult better(RefineResult current, RefineResult candidate) {
+			if (candidate == null) {
+				return current;
+			}
+			if (current == null) {
+				return candidate;
+			}
+
+			boolean currentHit = current.sim.hit;
+			boolean candidateHit = candidate.sim.hit;
+			if (currentHit != candidateHit) {
+				return currentHit ? current : candidate;
+			}
+			if (currentHit) {
+				int xzCompare = Double.compare(current.sim.hitXZDist2, candidate.sim.hitXZDist2);
+				if (xzCompare != 0) {
+					return xzCompare < 0 ? current : candidate;
+				}
+				if (current.sim.hitTick > 0
+						&& candidate.sim.hitTick > 0
+						&& current.sim.hitTick != candidate.sim.hitTick) {
+					return current.sim.hitTick < candidate.sim.hitTick ? current : candidate;
+				}
+				return current;
+			}
+			return Double.compare(current.sim.bestCrossXZDist2, candidate.sim.bestCrossXZDist2) <= 0 ? current
+					: candidate;
+		}
+
+		private static RefineResult globalCoarseScan(Scratch scratch, double minTheta, double maxTheta,
+				double horizontalDist, double startX, double startY, double startZ, double targetX, double targetZ,
+				double targetY, double ux, double uz, double radiusSq) {
+			RefineResult best = null;
+			for (double theta = minTheta; theta <= maxTheta + 1.0E-12D; theta += COARSE_SCAN_STEP) {
+				RefineResult candidate = scratch.tmpPick();
+				evalTheta(candidate, candidate.sim, theta, horizontalDist, startX, startY, startZ, targetX, targetZ,
+						targetY, ux, uz, radiusSq);
+				best = better(best, candidate);
+				if (best != null && best.sim.hit) {
+					return best;
+				}
+			}
+			return best;
+		}
+
+		private static double clamp(double value, double min, double max) {
+			if (value < min) {
+				return min;
+			}
+			if (value > max) {
+				return max;
+			}
+			return value;
+		}
+
+		private static double[] createDragPow() {
+			double[] values = new double[MAX_SIM_TICKS + 1];
+			values[0] = 1.0D;
+			for (int i = 1; i <= MAX_SIM_TICKS; i++) {
+				values[i] = values[i - 1] * DRAG;
+			}
+			return values;
+		}
+
+		private static final class Scratch {
+			private final SimResult sim0 = new SimResult();
+			private final SimResult sim1 = new SimResult();
+			private final SimResult sim2 = new SimResult();
+			private final SimResult sim3 = new SimResult();
+			private final SimResult sim4 = new SimResult();
+			private final RefineResult r0 = new RefineResult(sim0);
+			private final RefineResult r1 = new RefineResult(sim1);
+			private final RefineResult r2 = new RefineResult(sim2);
+			private final RefineResult r3 = new RefineResult(sim3);
+			private final RefineResult r4 = new RefineResult(sim4);
+			private int pick;
+
+			private RefineResult tmpPick() {
+				pick ^= 1;
+				return pick == 0 ? r3 : r4;
+			}
+		}
+
+		private static final class RefineResult {
+			private double theta;
+			private double cos;
+			private double vx;
+			private double vy;
+			private double vz;
+			private SimResult sim;
+
+			private RefineResult(SimResult sim) {
+				this.sim = sim;
+			}
+		}
+
+		private static final class SimResult {
+			private boolean hit;
+			private int hitTick;
+			private double bestCrossXZDist2;
+			private double hitXZDist2;
+			private int planeCrossTick;
 		}
 
 		private record PearlSolution(Vec3 solution, long flightTimeMs, float yaw, float pitch) {
-		}
-
-		private record SimResult(boolean hit, double errorSq, int hitTick) {
-		}
-
-		private record SearchResult(double theta, double errorSq, int tick) {
 		}
 	}
 }

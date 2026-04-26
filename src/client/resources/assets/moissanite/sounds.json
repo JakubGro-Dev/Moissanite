@@ -2,7 +2,7 @@
   "invwalk_mental_1": {
     "sounds": [
       {
-        "name": "moissanite:audio/1",
+        "name": "moissanite:audio/1.mp4",
         "stream": true
       }
     ]
@@ -10,7 +10,7 @@
   "invwalk_mental_2": {
     "sounds": [
       {
-        "name": "moissanite:audio/2",
+        "name": "moissanite:audio/2.mp4",
         "stream": true
       }
     ]
@@ -18,7 +18,7 @@
   "invwalk_mental_3": {
     "sounds": [
       {
-        "name": "moissanite:audio/3",
+        "name": "moissanite:audio/3.mp4",
         "stream": true
       }
     ]
@@ -26,7 +26,7 @@
   "invwalk_mental_4": {
     "sounds": [
       {
-        "name": "moissanite:audio/4",
+        "name": "moissanite:audio/4.mp4",
         "stream": true
       }
     ]
@@ -34,7 +34,7 @@
   "invwalk_mental_5": {
     "sounds": [
       {
-        "name": "moissanite:audio/5",
+        "name": "moissanite:audio/5.mp4",
         "stream": true
       }
     ]

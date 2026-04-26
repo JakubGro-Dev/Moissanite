@@ -27,8 +27,8 @@ public final class RotationController {
 	private static final float PITCH_SPEED_MAX = 290.0f;
 	private static final float YAW_DEADZONE = 0.06f;
 	private static final float PITCH_DEADZONE = 0.05f;
-	private static final float ROTATE_FINISH_YAW = 1.5f;
-	private static final float ROTATE_FINISH_PITCH = 1.5f;
+	private static final float DEFAULT_ROTATE_FINISH_YAW = 1.5f;
+	private static final float DEFAULT_ROTATE_FINISH_PITCH = 1.5f;
 
 	private static boolean initialized;
 	private static float yawVelocity;
@@ -39,6 +39,8 @@ public final class RotationController {
 	private static float rotateTargetYaw;
 	private static float rotateTargetPitch;
 	private static float rotateTaskMultiplier = 1.0f;
+	private static float rotateFinishYaw = DEFAULT_ROTATE_FINISH_YAW;
+	private static float rotateFinishPitch = DEFAULT_ROTATE_FINISH_PITCH;
 	private static long lastRotateStepNanos;
 
 	private RotationController() {
@@ -88,21 +90,14 @@ public final class RotationController {
 	}
 
 	public static boolean rotateYawPitch(double yaw, double pitch) {
-		init();
-		Minecraft client = Minecraft.getInstance();
-		if (client == null || client.player == null) {
-			return false;
-		}
-
-		rotateTargetYaw = Mth.wrapDegrees((float) yaw);
-		rotateTargetPitch = Mth.clamp((float) pitch, -90.0F, 90.0F);
-		rotateTaskMultiplier = rotationMultiplier();
-		rotateTaskActive = true;
-		lastRotateStepNanos = 0L;
-		return true;
+		return rotateYawPitch(yaw, pitch, rotationMultiplier(), DEFAULT_ROTATE_FINISH_YAW, DEFAULT_ROTATE_FINISH_PITCH);
 	}
 
 	public static boolean rotateYawPitch(double yaw, double pitch, double multiplier) {
+		return rotateYawPitch(yaw, pitch, multiplier, DEFAULT_ROTATE_FINISH_YAW, DEFAULT_ROTATE_FINISH_PITCH);
+	}
+
+	public static boolean rotateYawPitch(double yaw, double pitch, double multiplier, double finishYaw, double finishPitch) {
 		init();
 		Minecraft client = Minecraft.getInstance();
 		if (client == null || client.player == null) {
@@ -112,6 +107,8 @@ public final class RotationController {
 		rotateTargetYaw = Mth.wrapDegrees((float) yaw);
 		rotateTargetPitch = Mth.clamp((float) pitch, -90.0F, 90.0F);
 		rotateTaskMultiplier = sanitizeRotationMultiplier(multiplier);
+		rotateFinishYaw = sanitizeFinishTolerance(finishYaw, DEFAULT_ROTATE_FINISH_YAW);
+		rotateFinishPitch = sanitizeFinishTolerance(finishPitch, DEFAULT_ROTATE_FINISH_PITCH);
 		rotateTaskActive = true;
 		lastRotateStepNanos = 0L;
 		return true;
@@ -165,6 +162,16 @@ public final class RotationController {
 	}
 
 	private static void applyRotationStep(Minecraft client, float targetYaw, float targetPitch, float dtSeconds) {
+		if (rotateTaskMultiplier <= 0.0f) {
+			client.player.setYRot(targetYaw);
+			client.player.setXRot(targetPitch);
+			client.player.setYHeadRot(targetYaw);
+			client.player.setYBodyRot(targetYaw);
+			resetRotationController();
+			rotateTaskActive = false;
+			return;
+		}
+
 		float effectiveDt = dtSeconds / rotateTaskMultiplier;
 		float yawError = Mth.wrapDegrees(targetYaw - client.player.getYRot());
 		float pitchError = Mth.wrapDegrees(targetPitch - client.player.getXRot());
@@ -204,7 +211,7 @@ public final class RotationController {
 
 		float remainingYaw = Math.abs(Mth.wrapDegrees(targetYaw - client.player.getYRot()));
 		float remainingPitch = Math.abs(Mth.wrapDegrees(targetPitch - client.player.getXRot()));
-		if (remainingYaw <= ROTATE_FINISH_YAW && remainingPitch <= ROTATE_FINISH_PITCH) {
+		if (remainingYaw <= rotateFinishYaw && remainingPitch <= rotateFinishPitch) {
 			resetRotationController();
 			rotateTaskActive = false;
 		}
@@ -289,7 +296,17 @@ public final class RotationController {
 	}
 
 	private static float sanitizeRotationMultiplier(double multiplier) {
-		return (float) Mth.clamp(multiplier, 0.1, 2.0);
+		if (!Double.isFinite(multiplier)) {
+			return 1.0f;
+		}
+		return (float) Mth.clamp(multiplier, 0.0, 2.0);
+	}
+
+	private static float sanitizeFinishTolerance(double tolerance, float fallback) {
+		if (!Double.isFinite(tolerance)) {
+			return fallback;
+		}
+		return (float) Mth.clamp(tolerance, 0.1, 10.0);
 	}
 
 	private static void resetRotationController() {
@@ -297,6 +314,8 @@ public final class RotationController {
 		pitchVelocity = 0.0f;
 		yawCarry = 0.0f;
 		pitchCarry = 0.0f;
+		rotateFinishYaw = DEFAULT_ROTATE_FINISH_YAW;
+		rotateFinishPitch = DEFAULT_ROTATE_FINISH_PITCH;
 		lastRotateStepNanos = 0L;
 	}
 }

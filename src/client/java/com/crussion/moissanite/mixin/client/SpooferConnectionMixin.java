@@ -39,39 +39,38 @@ public class SpooferConnectionMixin {
             return;
         }
 
+        String channelId = payload.type().id().toString();
         SpoofMode mode = ClientSpooferOptions.SPOOF_MODE;
         if (mode == SpoofMode.OFF) {
             return;
         }
-        if (ClientSpooferOptions.DISABLE_CUSTOM_PAYLOADS) {
-            if (mode == SpoofMode.CUSTOM
-                    && matchesAnyPrefix(payload, ClientSpooferOptions.ALLOWED_CUSTOM_PAYLOAD_CHANNELS)) {
-                return;
-            }
-            ci.cancel();
-            return;
-        }
-        if (mode == SpoofMode.VANILLA) {
-            ci.cancel();
-            return;
-        }
-        if (mode == SpoofMode.MODDED) {
-            if (!matchesAnyPrefix(payload, ClientSpooferOptions.ALLOWED_MODS)) {
+
+        if (mode == SpoofMode.HIDE_ONLY_MOISSANITE) {
+            if (ClientSpooferOptions.isBlacklistedChannel(channelId)) {
                 ci.cancel();
             }
             return;
         }
-        if (mode == SpoofMode.CUSTOM) {
+
+        if (!ClientSpooferOptions.DISABLE_CUSTOM_PAYLOADS
+                || ClientSpooferOptions.isCompatibilityPayloadChannel(channelId)) {
             return;
         }
-        if (mode == SpoofMode.HIDE_ONLY_MOISSANITE
-                && ClientSpooferOptions.isBlacklistedChannel(payload.type().id().toString())) {
+
+        if (mode == SpoofMode.VANILLA) {
+            ci.cancel();
+        } else if (mode == SpoofMode.MODDED) {
+            if (!matchesAnyPrefix(channelId, ClientSpooferOptions.ALLOWED_MODS)) {
+                ci.cancel();
+            }
+        } else if (mode == SpoofMode.CUSTOM
+                && !matchesAnyPrefix(channelId, ClientSpooferOptions.ALLOWED_CUSTOM_PAYLOAD_CHANNELS)) {
             ci.cancel();
         }
     }
 
-    private static boolean matchesAnyPrefix(CustomPacketPayload payload, Iterable<String> prefixes) {
-        String channel = payload.type().id().toString().toLowerCase(Locale.ROOT);
+    private static boolean matchesAnyPrefix(String channelId, Iterable<String> prefixes) {
+        String channel = channelId.toLowerCase(Locale.ROOT);
         for (String prefix : prefixes) {
             if (channel.startsWith(prefix.toLowerCase(Locale.ROOT))) {
                 return true;

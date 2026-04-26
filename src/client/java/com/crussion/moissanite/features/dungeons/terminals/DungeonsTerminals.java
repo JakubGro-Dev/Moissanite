@@ -42,6 +42,9 @@ public final class DungeonsTerminals {
 	}
 
 	public static boolean onOpenScreenPacket(ClientboundOpenScreenPacket packet) {
+		if (!isAnyFeatureEnabled()) {
+			return false;
+		}
 		AUTO_TERMS.onOpenWindow();
 		boolean cancel = TERMINAL_CORE.onOpenWindow(packet);
 		cancel |= AUTO_MELODY.onOpenWindow(packet);
@@ -51,6 +54,9 @@ public final class DungeonsTerminals {
 	}
 
 	public static boolean onContainerSetSlotPacket(ClientboundContainerSetSlotPacket packet) {
+		if (!isAnyFeatureEnabled()) {
+			return false;
+		}
 		boolean cancel = TERMINAL_CORE.onSetSlot(packet);
 		AUTO_MELODY.onSetSlot(packet);
 		VISUALIZER.onSetSlot(packet);
@@ -58,6 +64,9 @@ public final class DungeonsTerminals {
 	}
 
 	public static void onContainerClosePacketReceived(ClientboundContainerClosePacket packet) {
+		if (!isAnyFeatureEnabled() && !TERMINAL_CORE.isInTerminal()) {
+			return;
+		}
 		TERMINAL_CORE.onCloseWindow();
 		AUTO_MELODY.onCloseWindow();
 		VISUALIZER.onCloseWindow();
@@ -65,6 +74,9 @@ public final class DungeonsTerminals {
 	}
 
 	public static void onContainerClosePacketSent(ServerboundContainerClosePacket packet) {
+		if (!isAnyFeatureEnabled() && !TERMINAL_CORE.isInTerminal()) {
+			return;
+		}
 		TERMINAL_CORE.onCloseWindow();
 		AUTO_MELODY.onCloseWindow();
 		VISUALIZER.onCloseWindow();
@@ -72,14 +84,23 @@ public final class DungeonsTerminals {
 	}
 
 	public static void onContainerSetDataPacket(ClientboundContainerSetDataPacket packet) {
+		if (!TerminalSupport.terminalAuraEnabled()) {
+			return;
+		}
 		TERMINAL_AURA.onContainerSetData(packet);
 	}
 
 	public static void onSystemChat(Component content) {
+		if (!TerminalSupport.terminalAuraEnabled()) {
+			return;
+		}
 		TERMINAL_AURA.onSystemChat(content);
 	}
 
 	public static boolean onPacketSent(Packet<?> packet) {
+		if (!isAnyFeatureEnabled() && !TERMINAL_CORE.isInTerminal()) {
+			return false;
+		}
 		if (packet instanceof ServerboundContainerClosePacket closePacket) {
 			onContainerClosePacketSent(closePacket);
 		}
@@ -91,14 +112,33 @@ public final class DungeonsTerminals {
 	}
 
 	public static boolean onContainerScreenMouseClicked(MouseButtonEvent click) {
+		if (!TerminalSupport.autoTermsEnabled()) {
+			return false;
+		}
 		return AUTO_TERMS.onMouseClick(click);
 	}
 
 	public static boolean onContainerScreenKeyPressed(KeyEvent input) {
+		if (!TerminalSupport.autoTermsEnabled()) {
+			return false;
+		}
 		return AUTO_TERMS.onKeyPress(input);
 	}
 
+	public static boolean isAnyFeatureEnabled() {
+		return TerminalSupport.anyTerminalFeatureEnabled();
+	}
+
 	private static void onClientTick(Minecraft client) {
+		if (!isAnyFeatureEnabled()) {
+			TERMINAL_CORE.onWorldReset();
+			AUTO_TERMS.onWorldReset();
+			AUTO_MELODY.onWorldReset();
+			TERMINAL_AURA.onWorldReset();
+			VISUALIZER.onWorldReset();
+			MENTAL_AUDIO.onClose(client);
+			return;
+		}
 		if (client == null || client.player == null || client.level == null) {
 			TERMINAL_CORE.onWorldReset();
 			AUTO_TERMS.onWorldReset();
@@ -117,6 +157,9 @@ public final class DungeonsTerminals {
 	}
 
 	private static void renderHud(GuiGraphics graphics) {
+		if (!isAnyFeatureEnabled()) {
+			return;
+		}
 		TERMINAL_CORE.renderOverlay(graphics);
 		AUTO_MELODY.renderOverlay(graphics);
 		VISUALIZER.renderOverlay(graphics);

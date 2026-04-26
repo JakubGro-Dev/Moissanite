@@ -16,21 +16,21 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public class ConnectionMixin {
 	@Inject(method = "send(Lnet/minecraft/network/protocol/Packet;)V", at = @At("HEAD"))
 	private void moissanite$send(Packet<?> packet, CallbackInfo ci) {
-		if (packet instanceof ServerboundContainerClosePacket) {
+		if (packet instanceof ServerboundContainerClosePacket && WardrobeKeybinds.isEnabledOrActive()) {
 			WardrobeKeybinds.onClosePacketSent();
 		}
 	}
 
 	@Inject(method = "send(Lnet/minecraft/network/protocol/Packet;Lio/netty/channel/ChannelFutureListener;)V", at = @At("HEAD"))
 	private void moissanite$send(Packet<?> packet, ChannelFutureListener listener, CallbackInfo ci) {
-		if (packet instanceof ServerboundContainerClosePacket) {
+		if (packet instanceof ServerboundContainerClosePacket && WardrobeKeybinds.isEnabledOrActive()) {
 			WardrobeKeybinds.onClosePacketSent();
 		}
 	}
 
 	@Inject(method = "send(Lnet/minecraft/network/protocol/Packet;Lio/netty/channel/ChannelFutureListener;Z)V", at = @At("HEAD"), cancellable = true)
 	private void moissanite$send(Packet<?> packet, ChannelFutureListener listener, boolean flush, CallbackInfo ci) {
-		if (packet instanceof ServerboundContainerClosePacket) {
+		if (packet instanceof ServerboundContainerClosePacket && WardrobeKeybinds.isEnabledOrActive()) {
 			WardrobeKeybinds.onClosePacketSent();
 		}
 		if (DungeonsTerminals.onPacketSent(packet)) {

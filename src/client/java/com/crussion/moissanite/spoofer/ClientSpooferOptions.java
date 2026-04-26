@@ -18,11 +18,15 @@ import java.util.Set;
 public final class ClientSpooferOptions {
     private static final String MOISSANITE_MOD_ID = "moissanite";
     private static final String HIDE_ONLY_MOISSANITE_LABEL = "Hide Only Moissanite";
+    private static final List<String> COMPATIBILITY_PAYLOAD_CHANNEL_PREFIXES = List.of(
+            "minecraft:",
+            "hypixel:",
+            "hmapi:");
 
     public static SpoofMode SPOOF_MODE = SpoofMode.HIDE_ONLY_MOISSANITE;
     public static String CUSTOM_CLIENT = "fabric";
     public static boolean HIDE_MODS = true;
-    public static boolean DISABLE_CUSTOM_PAYLOADS = true;
+    public static boolean DISABLE_CUSTOM_PAYLOADS = false;
     public static final Set<String> ALLOWED_MODS = new LinkedHashSet<>();
     public static final Set<String> BLACKLISTED_MODS = new LinkedHashSet<>(List.of(MOISSANITE_MOD_ID));
     public static final Set<String> ALLOWED_CUSTOM_PAYLOAD_CHANNELS = new LinkedHashSet<>();
@@ -40,7 +44,7 @@ public final class ClientSpooferOptions {
         UiDefinitions.SPOOFER_HIDE_MODS.set(true);
         UiDefinitions.SPOOFER_ALLOWED_MODS.set("");
         UiDefinitions.SPOOFER_BLACKLISTED_MODS.set(MOISSANITE_MOD_ID);
-        UiDefinitions.SPOOFER_DISABLE_CUSTOM_PAYLOADS.set(true);
+        UiDefinitions.SPOOFER_DISABLE_CUSTOM_PAYLOADS.set(false);
         UiDefinitions.SPOOFER_ALLOWED_CUSTOM_PAYLOAD_CHANNELS.set("");
     }
 
@@ -140,6 +144,19 @@ public final class ClientSpooferOptions {
 
         for (String token : BLACKLISTED_MODS) {
             if (matchesToken(channelId, token)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static boolean isCompatibilityPayloadChannel(String channelId) {
+        String normalized = normalizeIdentifier(channelId);
+        if (normalized.isEmpty()) {
+            return false;
+        }
+        for (String prefix : COMPATIBILITY_PAYLOAD_CHANNEL_PREFIXES) {
+            if (normalized.startsWith(prefix)) {
                 return true;
             }
         }

@@ -58,6 +58,12 @@ public final class RenderImageOnScreen {
 		}
 
 		@Override
+		public MoveElementScreen.Position getMovePosition(DrawState drawState, int screenWidth, int screenHeight) {
+			Position position = RenderImageOnScreen.getConfiguredPosition();
+			return new MoveElementScreen.Position(position.x(), position.y());
+		}
+
+		@Override
 		public MoveElementScreen.Position clampPosition(DrawState drawState, int screenWidth, int screenHeight, int x, int y) {
 			Position position = RenderImageOnScreen.clampPosition(drawState, screenWidth, screenHeight, x, y);
 			return new MoveElementScreen.Position(position.x(), position.y());
@@ -93,7 +99,12 @@ public final class RenderImageOnScreen {
 
 		@Override
 		public String footerText() {
-			return "Drag to move | Scroll to scale | Esc to close";
+			return "Drag to move | Shift: free | Ctrl: clamp Y | Alt: clamp X | Scroll to scale | Esc to close";
+		}
+
+		@Override
+		public boolean supportsOffscreenPlacement() {
+			return true;
 		}
 
 		@Override
@@ -203,7 +214,7 @@ public final class RenderImageOnScreen {
 
 	public static Position getVisibleConfiguredPosition(DrawState drawState, int screenWidth, int screenHeight, boolean persistIfAdjusted) {
 		if (drawState == null) {
-			return new Position(getConfiguredX(), getConfiguredY());
+			return getConfiguredPosition();
 		}
 		int configuredX = getConfiguredX();
 		int configuredY = getConfiguredY();
@@ -212,6 +223,10 @@ public final class RenderImageOnScreen {
 			setConfiguredPosition(clamped.x(), clamped.y());
 		}
 		return clamped;
+	}
+
+	public static Position getConfiguredPosition() {
+		return new Position(getConfiguredX(), getConfiguredY());
 	}
 
 	public static Position clampPosition(DrawState drawState, int screenWidth, int screenHeight, int x, int y) {
@@ -260,7 +275,7 @@ public final class RenderImageOnScreen {
 		if (drawState == null) {
 			return;
 		}
-		Position position = getVisibleConfiguredPosition(drawState, screenWidth, screenHeight, false);
+		Position position = getConfiguredPosition();
 		drawImage(graphics, drawState, position.x(), position.y());
 	}
 

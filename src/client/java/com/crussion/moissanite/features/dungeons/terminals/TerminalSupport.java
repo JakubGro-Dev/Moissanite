@@ -268,19 +268,19 @@ final class TerminalSupport {
 	}
 
 	static boolean autoTermsInvwalkEnabled() {
-		return Boolean.TRUE.equals(UiDefinitions.DUNGEONS_AUTO_TERMS_INVWALK.get());
+		return autoTermsEnabled() && Boolean.TRUE.equals(UiDefinitions.DUNGEONS_AUTO_TERMS_INVWALK.get());
 	}
 
 	static boolean autoTermsInvwalkMentalEnabled() {
-		return Boolean.TRUE.equals(UiDefinitions.DUNGEONS_AUTO_TERMS_INVWALK_MENTAL.get());
+		return autoTermsInvwalkEnabled() && Boolean.TRUE.equals(UiDefinitions.DUNGEONS_AUTO_TERMS_INVWALK_MENTAL.get());
 	}
 
 	static boolean autoTermsMelodyEnabled() {
-		return Boolean.TRUE.equals(UiDefinitions.DUNGEONS_AUTO_TERMS_MELODY_ENABLED.get());
+		return autoTermsEnabled() && Boolean.TRUE.equals(UiDefinitions.DUNGEONS_AUTO_TERMS_MELODY_ENABLED.get());
 	}
 
 	static boolean autoTermsInvwalkMelodyEnabled() {
-		return Boolean.TRUE.equals(UiDefinitions.DUNGEONS_AUTO_TERMS_INVWALK_MELODY.get());
+		return autoTermsInvwalkEnabled() && Boolean.TRUE.equals(UiDefinitions.DUNGEONS_AUTO_TERMS_INVWALK_MELODY.get());
 	}
 
 	static int autoTermsInvwalkMelodyMethod() {
@@ -306,7 +306,7 @@ final class TerminalSupport {
 	}
 
 	static boolean visualizerEnabled() {
-		return Boolean.TRUE.equals(UiDefinitions.DUNGEONS_INVWALK_VISUALIZER_ENABLED.get());
+		return autoTermsInvwalkEnabled() && Boolean.TRUE.equals(UiDefinitions.DUNGEONS_INVWALK_VISUALIZER_ENABLED.get());
 	}
 
 	static boolean visualizerNumbersEnabled() {
@@ -375,5 +375,15 @@ final class TerminalSupport {
 
 	static int visualizerMelodyColumnColor() {
 		return UiDefinitions.DUNGEONS_INVWALK_VISUALIZER_MELODY_COLUMN_COLOR.argb();
+	}
+
+	static boolean anyTerminalFeatureEnabled() {
+		return terminalAuraEnabled()
+				|| autoTermsEnabled()
+				|| autoTermsMelodyEnabled()
+				|| autoTermsInvwalkEnabled()
+				|| autoTermsInvwalkMentalEnabled()
+				|| autoTermsInvwalkMelodyEnabled()
+				|| visualizerEnabled();
 	}
 }

@@ -36,7 +36,6 @@ import org.joml.Matrix4f;
 import java.util.Locale;
 
 public final class AutoRend {
-	private static final RenderType AUTO_REND_TRIGGER_RENDER_TYPE = createAutoRendTriggerRenderType();
 	private static final String KUUDRA_HOLLOW = "Kuudra's Hollow";
 	private static final int SEQUENCE_TIMEOUT_TICKS = 220;
 	private static final int WORLD_LOAD_RESET_WINDOW_TICKS = 80;
@@ -61,6 +60,7 @@ public final class AutoRend {
 	private static boolean armorSwapResolved;
 	private static boolean armorSwapSucceeded;
 	private static boolean armorSwapOutcomeLogged;
+	private static RenderType autoRendTriggerRenderType;
 
 	private AutoRend() {
 	}
@@ -156,7 +156,7 @@ public final class AutoRend {
 
 		Vec3 cameraPos = client.gameRenderer.getMainCamera().position();
 		for (AABB box : KuudraTriggerArea.getTriggerAabbs()) {
-			var lineBuffer = context.consumers().getBuffer(AUTO_REND_TRIGGER_RENDER_TYPE);
+			var lineBuffer = context.consumers().getBuffer(getAutoRendTriggerRenderType());
 			ShapeRenderer.renderShape(
 					context.matrices(),
 					lineBuffer,
@@ -219,6 +219,13 @@ public final class AutoRend {
 		return String.format(Locale.ROOT, "%.1f %.1f %.1f", center.x, center.y, center.z);
 	}
 
+	private static RenderType getAutoRendTriggerRenderType() {
+		if (autoRendTriggerRenderType == null) {
+			autoRendTriggerRenderType = createAutoRendTriggerRenderType();
+		}
+		return autoRendTriggerRenderType;
+	}
+
 	private static RenderType createAutoRendTriggerRenderType() {
 		RenderPipeline source = RenderPipelines.LINES;
 		RenderPipeline.Builder builder = RenderPipeline.builder()
@@ -244,9 +251,9 @@ public final class AutoRend {
 		source.getShaderDefines().flags().forEach(builder::withShaderDefine);
 		source.getShaderDefines().values().forEach((key, value) -> applyNumericShaderDefine(builder, key, value));
 
-		RenderPipeline pipeline = builder.build();
+		RenderPipeline pipeline = RenderPipelines.register(builder.build());
 		RenderSetup setup = RenderSetup.builder(pipeline).createRenderSetup();
-		return RenderTypeAccessor.moissanite$invokeCreate("moissanite_auto_rend_old_trigger_lines", setup);
+		return RenderType.create("moissanite_auto_rend_old_trigger_lines", setup);
 	}
 
 	private static void applyNumericShaderDefine(RenderPipeline.Builder builder, String key, String value) {

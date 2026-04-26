@@ -7,6 +7,7 @@ import org.jetbrains.annotations.Nullable;
 import com.crussion.moissanite.input.UiKeybinds;
 import com.mojang.blaze3d.platform.InputConstants;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
@@ -22,6 +23,7 @@ public class MoveElementScreen<S> extends Screen {
 	private boolean dragging;
 	private int dragOffsetX;
 	private int dragOffsetY;
+	private Position previewPosition;
 
 	public MoveElementScreen(Screen returnScreen, MovableElementAdapter<S> adapter) {
 		super(adapter.title());
@@ -45,7 +47,7 @@ public class MoveElementScreen<S> extends Screen {
 			return;
 		}
 
-		Position position = adapter.getVisiblePosition(drawState, this.width, this.height, false);
+		Position position = currentPosition(drawState);
 		int x = position.x();
 		int y = position.y();
 		adapter.draw(graphics, drawState, x, y);
@@ -75,7 +77,7 @@ public class MoveElementScreen<S> extends Screen {
 			return true;
 		}
 
-		Position position = adapter.getVisiblePosition(drawState, this.width, this.height, false);
+		Position position = currentPosition(drawState);
 		if (isInside(event.x(), event.y(), position.x(), position.y(), adapter.drawWidth(drawState), adapter.drawHeight(drawState))) {
 			this.dragging = true;
 			this.setDragging(true);
@@ -100,7 +102,9 @@ public class MoveElementScreen<S> extends Screen {
 		int nextX = (int) Math.round(event.x() - this.dragOffsetX);
 		int nextY = (int) Math.round(event.y() - this.dragOffsetY);
 		Position clamped = adapter.clampPosition(drawState, this.width, this.height, nextX, nextY);
-		adapter.applyDraggedPosition(drawState, this.width, this.height, clamped.x(), clamped.y());
+		Position applied = resolveDraggedPosition(nextX, nextY, clamped);
+		this.previewPosition = applied;
+		adapter.applyDraggedPosition(drawState, this.width, this.height, applied.x(), applied.y());
 		return true;
 	}
 
@@ -152,6 +156,24 @@ public class MoveElementScreen<S> extends Screen {
 		return mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height;
 	}
 
+	private Position currentPosition(S drawState) {
+		if (this.previewPosition != null) {
+			return this.previewPosition;
+		}
+		return adapter.getMovePosition(drawState, this.width, this.height);
+	}
+
+	private Position resolveDraggedPosition(int nextX, int nextY, Position clamped) {
+		Minecraft client = this.minecraft;
+		if (!adapter.supportsOffscreenPlacement() || client == null || !client.hasShiftDown()) {
+			return clamped;
+		}
+
+		int appliedX = client.hasAltDown() ? clamped.x() : nextX;
+		int appliedY = client.hasControlDown() ? clamped.y() : nextY;
+		return new Position(appliedX, appliedY);
+	}
+
 	private void closeToGame() {
 		if (this.minecraft != null) {
 			this.minecraft.setScreen(null);
@@ -167,6 +189,10 @@ public class MoveElementScreen<S> extends Screen {
 		S getDrawState(int screenWidth, int screenHeight);
 
 		Position getVisiblePosition(S drawState, int screenWidth, int screenHeight, boolean persistIfAdjusted);
+
+		default Position getMovePosition(S drawState, int screenWidth, int screenHeight) {
+			return getVisiblePosition(drawState, screenWidth, screenHeight, false);
+		}
 
 		Position clampPosition(S drawState, int screenWidth, int screenHeight, int x, int y);
 
@@ -184,6 +210,10 @@ public class MoveElementScreen<S> extends Screen {
 
 		default String footerText() {
 			return "Drag to move | Esc to close";
+		}
+
+		default boolean supportsOffscreenPlacement() {
+			return false;
 		}
 
 		default boolean onMouseScroll(double yDelta) {

@@ -1,6 +1,7 @@
 package com.crussion.moissanite.mixin.client;
 
 import com.crussion.moissanite.definitions.UiDefinitions;
+import com.crussion.moissanite.util.chat.CompactChatState;
 import com.crussion.moissanite.util.text.TextNormalizer;
 
 import net.minecraft.client.GuiMessage;
@@ -18,8 +19,11 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -53,6 +57,9 @@ public abstract class CompactChatMixin {
 	private static final String MOISSANITE_SERVER_SENDER_KEY = "__server__";
 
 	@Unique
+	private static final long MOISSANITE_COMPACTION_UPDATE_INTERVAL_MS = 500L;
+
+	@Unique
 	private final ExecutorService moissanite$compactionExecutor = Executors.newSingleThreadExecutor(runnable -> {
 		Thread thread = new Thread(runnable, "Moissanite-ChatCompactor");
 		thread.setDaemon(true);
@@ -63,23 +70,44 @@ public abstract class CompactChatMixin {
 	private final Object moissanite$trackedLock = new Object();
 
 	@Unique
-	private final List<String> moissanite$trackedKeys = new ArrayList<>();
+	private final Map<String, CompactChatState.TrackedMessage> moissanite$trackedMessages = new LinkedHashMap<>();
 
 	@Unique
-	private final List<Component> moissanite$trackedBaseComponents = new ArrayList<>();
+	private final List<CompactChatState.PendingInsert> moissanite$pendingInserts = new ArrayList<>();
 
 	@Unique
-	private final List<String> moissanite$trackedBasePlainTexts = new ArrayList<>();
+	private final Map<String, CompactChatState.PendingCompaction> moissanite$pendingCompactions = new LinkedHashMap<>();
 
 	@Unique
-	private final List<Integer> moissanite$trackedCounts = new ArrayList<>();
+	private long moissanite$messageSequence;
 
 	@Unique
-	private final List<Long> moissanite$trackedTimestampsMs = new ArrayList<>();
+	private boolean moissanite$flushScheduled;
+
+	@Unique
+	private volatile boolean moissanite$flushRequested;
+
+	@Unique
+	private volatile long moissanite$flushRequestedGeneration = -1L;
 
 	@Inject(method = "clearMessages", at = @At("HEAD"))
 	private void moissanite$onClearMessages(boolean clearHistory, CallbackInfo ci) {
 		moissanite$resetPipelineState();
+	}
+
+	@Inject(method = "tick", at = @At("HEAD"))
+	private void moissanite$onTick(CallbackInfo ci) {
+		long requestedGeneration;
+		synchronized (moissanite$trackedLock) {
+			moissanite$queueDueDirtyCompactions(System.currentTimeMillis());
+			if (!moissanite$flushRequested) {
+				return;
+			}
+			requestedGeneration = moissanite$flushRequestedGeneration;
+			moissanite$flushRequested = false;
+			moissanite$flushRequestedGeneration = -1L;
+		}
+		moissanite$flushPendingCompactions(requestedGeneration);
 	}
 
 	@Unique
@@ -146,9 +174,9 @@ public abstract class CompactChatMixin {
 			return;
 		}
 
-		String previousRenderedText = null;
-		Component compacted = null;
 		long currentTimeMs = System.currentTimeMillis();
+		boolean scheduleFlush = false;
+		boolean passThrough = false;
 
 		synchronized (moissanite$trackedLock) {
 			if (generation != moissanite$pipelineGeneration) {
@@ -159,43 +187,61 @@ public abstract class CompactChatMixin {
 
 			String[] parsed = moissanite$parseMessage(component);
 			if (parsed == null) {
-				moissanite$schedulePassThrough(generation, component, messageSignature, guiMessageTag);
-				return;
+				passThrough = true;
+			} else {
+				String senderKey = moissanite$normalizeKey(parsed[0]);
+				String bodyKey = moissanite$normalizeKey(parsed[1]);
+				if (senderKey.isEmpty() || bodyKey.isEmpty()) {
+					passThrough = true;
+				} else {
+					String trackedKey = senderKey + "\u0000" + bodyKey;
+					CompactChatState.TrackedMessage trackedMessage = moissanite$trackedMessages.get(trackedKey);
+					if (trackedMessage == null) {
+						moissanite$trackedMessages.put(trackedKey,
+								new CompactChatState.TrackedMessage(component.copy(), currentTimeMs));
+						moissanite$pendingInserts.add(new CompactChatState.PendingInsert(
+								trackedKey,
+								++moissanite$messageSequence,
+								messageSignature,
+								guiMessageTag));
+						if (!moissanite$flushScheduled) {
+							moissanite$flushScheduled = true;
+							scheduleFlush = true;
+						}
+					} else {
+						boolean queuedCompaction = false;
+						trackedMessage.seenCount++;
+						trackedMessage.lastSeenMs = currentTimeMs;
+						trackedMessage.latestMessageSignature = messageSignature;
+						trackedMessage.latestGuiMessageTag = guiMessageTag;
+						if (trackedMessage.displayedCount > 0) {
+							trackedMessage.compactionDirty = true;
+							if (currentTimeMs >= trackedMessage.nextCompactionFlushMs) {
+								moissanite$queuePendingCompaction(
+										trackedKey,
+										trackedMessage,
+										currentTimeMs,
+										messageSignature,
+										guiMessageTag);
+								queuedCompaction = true;
+							}
+						}
+						if (queuedCompaction && !moissanite$flushScheduled) {
+							moissanite$flushScheduled = true;
+							scheduleFlush = true;
+						}
+					}
+				}
 			}
-
-			String senderKey = moissanite$normalizeKey(parsed[0]);
-			String bodyKey = moissanite$normalizeKey(parsed[1]);
-			if (senderKey.isEmpty() || bodyKey.isEmpty()) {
-				moissanite$schedulePassThrough(generation, component, messageSignature, guiMessageTag);
-				return;
-			}
-
-			String key = senderKey + "\u0000" + bodyKey;
-			int trackedIndex = moissanite$findTrackedIndex(key);
-			if (trackedIndex < 0) {
-				String basePlainText = moissanite$plainText(component.getString());
-				moissanite$trackedKeys.add(key);
-				moissanite$trackedBaseComponents.add(component.copy());
-				moissanite$trackedBasePlainTexts.add(basePlainText);
-				moissanite$trackedCounts.add(1);
-				moissanite$trackedTimestampsMs.add(currentTimeMs);
-				moissanite$schedulePassThrough(generation, component, messageSignature, guiMessageTag);
-				return;
-			}
-
-			String basePlainText = moissanite$trackedBasePlainTexts.get(trackedIndex);
-			int previousCount = moissanite$trackedCounts.get(trackedIndex);
-			previousRenderedText = moissanite$renderedPlainText(basePlainText, previousCount);
-			int nextCount = previousCount + 1;
-
-			moissanite$trackedCounts.set(trackedIndex, nextCount);
-			moissanite$trackedTimestampsMs.set(trackedIndex, currentTimeMs);
-
-			compacted = moissanite$trackedBaseComponents.get(trackedIndex).copy()
-					.append(Component.literal(" (" + nextCount + ")"));
 		}
 
-		moissanite$scheduleCompactReplace(generation, previousRenderedText, compacted, messageSignature, guiMessageTag);
+		if (passThrough) {
+			moissanite$schedulePassThrough(generation, component, messageSignature, guiMessageTag);
+			return;
+		}
+		if (scheduleFlush) {
+			moissanite$requestPendingFlush(generation);
+		}
 	}
 
 	@Unique
@@ -216,43 +262,185 @@ public abstract class CompactChatMixin {
 	}
 
 	@Unique
-	private void moissanite$scheduleCompactReplace(long generation, String previousRenderedText, Component compacted,
-			MessageSignature messageSignature, GuiMessageTag guiMessageTag) {
-		minecraft.execute(() -> {
-			if (generation != moissanite$pipelineGeneration || minecraft.gui == null || compacted == null) {
+	private void moissanite$requestPendingFlush(long generation) {
+		synchronized (moissanite$trackedLock) {
+			if (generation != moissanite$pipelineGeneration) {
 				return;
 			}
-
-			moissanite$applyCompactedReplace(previousRenderedText, compacted, messageSignature, guiMessageTag);
-		});
+			moissanite$flushRequested = true;
+			moissanite$flushRequestedGeneration = generation;
+		}
 	}
 
 	@Unique
-	private void moissanite$applyCompactedReplace(String previousRenderedText, Component compacted,
-			MessageSignature messageSignature, GuiMessageTag guiMessageTag) {
+	private void moissanite$flushPendingCompactions(long generation) {
+		if (generation != moissanite$pipelineGeneration || minecraft.gui == null) {
+			synchronized (moissanite$trackedLock) {
+				if (generation == moissanite$pipelineGeneration) {
+					moissanite$flushScheduled = false;
+				}
+			}
+			return;
+		}
+
+		List<CompactChatState.PendingApply> pendingApplies = new ArrayList<>();
+		synchronized (moissanite$trackedLock) {
+			if (generation != moissanite$pipelineGeneration) {
+				return;
+			}
+
+			moissanite$flushScheduled = false;
+
+			for (CompactChatState.PendingInsert pendingInsert : moissanite$pendingInserts) {
+				CompactChatState.TrackedMessage trackedMessage = moissanite$trackedMessages.get(pendingInsert.key);
+				if (trackedMessage == null) {
+					continue;
+				}
+
+				int targetCount = trackedMessage.seenCount;
+				trackedMessage.nextCompactionFlushMs = System.currentTimeMillis() + MOISSANITE_COMPACTION_UPDATE_INTERVAL_MS;
+				Component displayComponent = targetCount <= 1
+						? trackedMessage.baseComponent.copy()
+						: trackedMessage.baseComponent.copy().append(Component.literal(" (" + targetCount + ")"));
+				pendingApplies.add(new CompactChatState.PendingApply(
+						pendingInsert.key,
+						null,
+						displayComponent,
+						targetCount,
+						pendingInsert.sequence,
+						pendingInsert.messageSignature,
+						pendingInsert.guiMessageTag));
+			}
+			moissanite$pendingInserts.clear();
+
+			Iterator<Map.Entry<String, CompactChatState.PendingCompaction>> iterator = moissanite$pendingCompactions.entrySet().iterator();
+			while (iterator.hasNext()) {
+				Map.Entry<String, CompactChatState.PendingCompaction> entry = iterator.next();
+				CompactChatState.TrackedMessage trackedMessage = moissanite$trackedMessages.get(entry.getKey());
+				if (trackedMessage == null) {
+					iterator.remove();
+					continue;
+				}
+
+				CompactChatState.PendingCompaction pendingCompaction = entry.getValue();
+				if (pendingCompaction.targetCount <= trackedMessage.displayedCount) {
+					iterator.remove();
+					continue;
+				}
+				if (trackedMessage.displayedMessage == null || trackedMessage.displayedCount <= 0) {
+					continue;
+				}
+
+				pendingApplies.add(new CompactChatState.PendingApply(
+						entry.getKey(),
+						trackedMessage.displayedMessage,
+						trackedMessage.baseComponent.copy().append(Component.literal(" (" + pendingCompaction.targetCount + ")")),
+						pendingCompaction.targetCount,
+						pendingCompaction.sequence,
+						pendingCompaction.messageSignature,
+						pendingCompaction.guiMessageTag));
+				iterator.remove();
+			}
+		}
+
+		if (pendingApplies.isEmpty()) {
+			return;
+		}
+
+		pendingApplies.sort(Comparator.comparingLong(pendingApply -> pendingApply.sequence));
+		for (int i = 0; i < pendingApplies.size(); i++) {
+			if (generation != moissanite$pipelineGeneration || minecraft.gui == null) {
+				return;
+			}
+
+			CompactChatState.PendingApply pendingApply = pendingApplies.get(i);
+			if (pendingApply.previousMessage == null) {
+				GuiMessage appliedMessage = moissanite$applyQueuedInsert(
+						pendingApply.compacted,
+						pendingApply.messageSignature,
+						pendingApply.guiMessageTag);
+				synchronized (moissanite$trackedLock) {
+					if (generation != moissanite$pipelineGeneration) {
+						return;
+					}
+
+					CompactChatState.TrackedMessage trackedMessage = moissanite$trackedMessages.get(pendingApply.key);
+					if (trackedMessage == null) {
+						continue;
+					}
+					trackedMessage.displayedMessage = appliedMessage;
+					trackedMessage.displayedCount = pendingApply.targetCount;
+				}
+				continue;
+			}
+
+			int replacementEnd = i + 1;
+			while (replacementEnd < pendingApplies.size() && pendingApplies.get(replacementEnd).previousMessage != null) {
+				replacementEnd++;
+			}
+			List<CompactChatState.PendingApply> replacementBatch = pendingApplies.subList(i, replacementEnd);
+			List<GuiMessage> appliedMessages = moissanite$applyQueuedReplacements(replacementBatch);
+			synchronized (moissanite$trackedLock) {
+				if (generation != moissanite$pipelineGeneration) {
+					return;
+				}
+
+				for (int batchIndex = 0; batchIndex < replacementBatch.size() && batchIndex < appliedMessages.size(); batchIndex++) {
+					CompactChatState.PendingApply replacement = replacementBatch.get(batchIndex);
+					CompactChatState.TrackedMessage trackedMessage = moissanite$trackedMessages.get(replacement.key);
+					if (trackedMessage == null) {
+						continue;
+					}
+					trackedMessage.displayedMessage = appliedMessages.get(batchIndex);
+					trackedMessage.displayedCount = replacement.targetCount;
+				}
+			}
+			i = replacementEnd - 1;
+		}
+	}
+
+	@Unique
+	private GuiMessage moissanite$applyQueuedInsert(Component component, MessageSignature messageSignature,
+			GuiMessageTag guiMessageTag) {
+		moissanite$bypassPipeline = true;
+		try {
+			minecraft.gui.getChat().addMessage(component, messageSignature, guiMessageTag);
+		} finally {
+			moissanite$bypassPipeline = false;
+		}
+		return allMessages.isEmpty() ? null : allMessages.getFirst();
+	}
+
+	@Unique
+	private List<GuiMessage> moissanite$applyQueuedReplacements(List<CompactChatState.PendingApply> replacements) {
+		List<GuiMessage> appliedMessages = new ArrayList<>(replacements.size());
 		int previousScroll = chatScrollbarPos;
 		boolean preserveScroll = previousScroll > 0;
 
-		moissanite$removeLatestRendered(previousRenderedText);
+		for (CompactChatState.PendingApply replacement : replacements) {
+			moissanite$removeTrackedMessage(replacement.previousMessage);
 
-		GuiMessage guiMessage = new GuiMessage(
-				minecraft.gui.getGuiTicks(),
-				compacted,
-				messageSignature,
-				guiMessageTag);
-		allMessages.addFirst(guiMessage);
-		if (allMessages.size() > 100) {
-			allMessages.removeLast();
+			GuiMessage guiMessage = new GuiMessage(
+					minecraft.gui.getGuiTicks(),
+					replacement.compacted,
+					replacement.messageSignature,
+					replacement.guiMessageTag);
+			allMessages.addFirst(guiMessage);
+			if (allMessages.size() > 100) {
+				allMessages.removeLast();
+			}
+			appliedMessages.add(guiMessage);
 		}
 
 		refreshTrimmedMessages();
 		if (!preserveScroll) {
-			return;
+			return appliedMessages;
 		}
 
 		int maxScroll = Math.max(0, trimmedMessages.size() - getLinesPerPage());
 		chatScrollbarPos = Math.min(previousScroll, maxScroll);
 		newMessageSinceScroll = chatScrollbarPos > 0;
+		return appliedMessages;
 	}
 
 	@Unique
@@ -267,48 +455,64 @@ public abstract class CompactChatMixin {
 
 	@Unique
 	private void moissanite$cleanupExpired(long nowMs, long maxAgeMs) {
-		for (int i = moissanite$trackedKeys.size() - 1; i >= 0; i--) {
-			long ageMs = nowMs - moissanite$trackedTimestampsMs.get(i);
+		Iterator<Map.Entry<String, CompactChatState.TrackedMessage>> iterator = moissanite$trackedMessages.entrySet().iterator();
+		while (iterator.hasNext()) {
+			Map.Entry<String, CompactChatState.TrackedMessage> entry = iterator.next();
+			long ageMs = nowMs - entry.getValue().lastSeenMs;
 			if (ageMs > maxAgeMs) {
-				moissanite$removeTrackedAt(i);
+				iterator.remove();
+				moissanite$pendingCompactions.remove(entry.getKey());
 			}
 		}
 	}
 
 	@Unique
-	private void moissanite$removeTrackedAt(int index) {
-		moissanite$trackedKeys.remove(index);
-		moissanite$trackedBaseComponents.remove(index);
-		moissanite$trackedBasePlainTexts.remove(index);
-		moissanite$trackedCounts.remove(index);
-		moissanite$trackedTimestampsMs.remove(index);
-	}
-
-	@Unique
-	private int moissanite$findTrackedIndex(String key) {
-		for (int i = 0; i < moissanite$trackedKeys.size(); i++) {
-			if (moissanite$trackedKeys.get(i).equals(key)) {
-				return i;
+	private void moissanite$queueDueDirtyCompactions(long nowMs) {
+		for (Map.Entry<String, CompactChatState.TrackedMessage> entry : moissanite$trackedMessages.entrySet()) {
+			CompactChatState.TrackedMessage trackedMessage = entry.getValue();
+			if (!trackedMessage.compactionDirty || trackedMessage.displayedCount <= 0) {
+				continue;
+			}
+			if (nowMs < trackedMessage.nextCompactionFlushMs) {
+				continue;
+			}
+			moissanite$queuePendingCompaction(
+					entry.getKey(),
+					trackedMessage,
+					nowMs,
+					trackedMessage.latestMessageSignature,
+					trackedMessage.latestGuiMessageTag);
+			if (!moissanite$flushScheduled) {
+				moissanite$flushScheduled = true;
+				moissanite$flushRequested = true;
+				moissanite$flushRequestedGeneration = moissanite$pipelineGeneration;
 			}
 		}
-		return -1;
 	}
 
 	@Unique
-	private static String moissanite$renderedPlainText(String base, int count) {
-		return count <= 1 ? base : base + " (" + count + ")";
+	private void moissanite$queuePendingCompaction(String trackedKey, CompactChatState.TrackedMessage trackedMessage,
+			long nowMs, MessageSignature messageSignature, GuiMessageTag guiMessageTag) {
+		trackedMessage.compactionDirty = false;
+		trackedMessage.nextCompactionFlushMs = nowMs + MOISSANITE_COMPACTION_UPDATE_INTERVAL_MS;
+		moissanite$pendingCompactions.put(
+				trackedKey,
+				new CompactChatState.PendingCompaction(
+						trackedMessage.seenCount,
+						++moissanite$messageSequence,
+						messageSignature,
+						guiMessageTag));
 	}
 
 	@Unique
-	private void moissanite$removeLatestRendered(String renderedText) {
-		if (renderedText == null || renderedText.isEmpty()) {
+	private void moissanite$removeTrackedMessage(GuiMessage trackedMessage) {
+		if (trackedMessage == null) {
 			return;
 		}
+
 		Iterator<GuiMessage> iterator = allMessages.iterator();
 		while (iterator.hasNext()) {
-			GuiMessage message = iterator.next();
-			String plain = moissanite$plainText(message.content().getString());
-			if (renderedText.equals(plain)) {
+			if (iterator.next() == trackedMessage) {
 				iterator.remove();
 				return;
 			}
@@ -364,10 +568,31 @@ public abstract class CompactChatMixin {
 		if (input == null) {
 			return "";
 		}
-		String stripped = TextNormalizer.stripFormattingCodes(input)
-				.replace('\u00A0', ' ')
-				.trim();
-		return stripped.replaceAll("\\s+", " ");
+		return moissanite$collapseWhitespace(TextNormalizer.stripFormattingCodes(input));
+	}
+
+	@Unique
+	private static String moissanite$collapseWhitespace(String input) {
+		if (input == null || input.isEmpty()) {
+			return "";
+		}
+
+		StringBuilder builder = new StringBuilder(input.length());
+		boolean pendingSpace = false;
+		for (int i = 0; i < input.length(); i++) {
+			char c = input.charAt(i);
+			char normalized = c == '\u00A0' ? ' ' : c;
+			if (Character.isWhitespace(normalized)) {
+				pendingSpace = builder.length() > 0;
+				continue;
+			}
+			if (pendingSpace) {
+				builder.append(' ');
+				pendingSpace = false;
+			}
+			builder.append(normalized);
+		}
+		return builder.toString();
 	}
 
 	@Unique
@@ -379,10 +604,12 @@ public abstract class CompactChatMixin {
 
 	@Unique
 	private void moissanite$clearTracked() {
-		moissanite$trackedKeys.clear();
-		moissanite$trackedBaseComponents.clear();
-		moissanite$trackedBasePlainTexts.clear();
-		moissanite$trackedCounts.clear();
-		moissanite$trackedTimestampsMs.clear();
+		moissanite$trackedMessages.clear();
+		moissanite$pendingInserts.clear();
+		moissanite$pendingCompactions.clear();
+		moissanite$messageSequence = 0L;
+		moissanite$flushScheduled = false;
+		moissanite$flushRequested = false;
+		moissanite$flushRequestedGeneration = -1L;
 	}
 }

@@ -45,4 +45,13 @@ public final class PlayerInputActions {
 		KeyHoldController.holdBoundKey(useKey, MIN_INPUT_HOLD_TICKS);
 		return true;
 	}
+
+	public static boolean shiftRightClick() {
+		Minecraft client = Minecraft.getInstance();
+		if (client == null || client.player == null || client.options == null) {
+			return false;
+		}
+		KeyHoldController.holdBoundKey(client.options.keyShift, MIN_INPUT_HOLD_TICKS);
+		return rightClick();
+	}
 }

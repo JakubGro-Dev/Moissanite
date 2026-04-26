@@ -45,7 +45,7 @@ public final class KuudraSupplyWaypoints {
 	private static final int CRATE_COLOR = 0xFF00D6FF;
 	private static final int BUILD_EMPTY_COLOR = 0xFFFF5555;
 	private static final int BUILD_PROGRESS_COLOR = 0xFFFFCC55;
-	private static final RenderType WAYPOINT_BOX_RENDER_TYPE = createWaypointBoxRenderType();
+	private static RenderType waypointBoxRenderType;
 
 	private static final List<Vec3> CRATES = new ArrayList<>();
 	private static final List<AABB> CRATE_HITBOXES = new ArrayList<>();
@@ -254,7 +254,7 @@ public final class KuudraSupplyWaypoints {
 	private static void renderBox(WorldRenderContext context, Vec3 cameraPos, AABB box, int color) {
 		ShapeRenderer.renderShape(
 				context.matrices(),
-				context.consumers().getBuffer(WAYPOINT_BOX_RENDER_TYPE),
+				context.consumers().getBuffer(getWaypointBoxRenderType()),
 				Shapes.create(box),
 				-cameraPos.x,
 				-cameraPos.y,
@@ -351,6 +351,13 @@ public final class KuudraSupplyWaypoints {
 				|| Boolean.TRUE.equals(UiDefinitions.KUUDRA_BALLISTA_BUILD_WAYPOINTS.get());
 	}
 
+	private static RenderType getWaypointBoxRenderType() {
+		if (waypointBoxRenderType == null) {
+			waypointBoxRenderType = createWaypointBoxRenderType();
+		}
+		return waypointBoxRenderType;
+	}
+
 	private static RenderType createWaypointBoxRenderType() {
 		RenderPipeline source = RenderPipelines.LINES;
 		RenderPipeline.Builder builder = RenderPipeline.builder()
@@ -376,9 +383,9 @@ public final class KuudraSupplyWaypoints {
 		source.getShaderDefines().flags().forEach(builder::withShaderDefine);
 		source.getShaderDefines().values().forEach((key, value) -> applyNumericShaderDefine(builder, key, value));
 
-		RenderPipeline pipeline = builder.build();
+		RenderPipeline pipeline = RenderPipelines.register(builder.build());
 		RenderSetup setup = RenderSetup.builder(pipeline).createRenderSetup();
-		return RenderTypeAccessor.moissanite$invokeCreate("moissanite_kuudra_waypoint_boxes", setup);
+		return RenderType.create("moissanite_kuudra_waypoint_boxes", setup);
 	}
 
 	private static void applyNumericShaderDefine(RenderPipeline.Builder builder, String key, String value) {

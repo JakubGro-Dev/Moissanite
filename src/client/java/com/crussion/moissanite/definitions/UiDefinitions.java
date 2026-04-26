@@ -3,10 +3,12 @@ package com.crussion.moissanite.definitions;
 import com.crussion.moissanite.features.cheats.AutoPearl;
 import com.crussion.moissanite.features.cheats.AutoRend;
 import com.crussion.moissanite.features.cheats.AutoRend_Reworked;
+import com.crussion.moissanite.features.cheats.AutoExperimentMacro;
 import com.crussion.moissanite.features.cheats.KuudraPosTracker;
 import com.crussion.moissanite.features.visual.RenderImageOnScreen;
 import com.crussion.moissanite.features.visual.storage.StorageOverlayFeature;
 import com.crussion.moissanite.update.ModUpdater;
+import com.crussion.moissanite.ui.UiEntrypoints;
 import com.crussion.moissanite.ui.data.UiCatalog;
 import com.crussion.moissanite.ui.data.UiCategory;
 import com.crussion.moissanite.ui.data.UiColor;
@@ -18,6 +20,7 @@ import com.crussion.moissanite.ui.data.UiSlider;
 import com.crussion.moissanite.ui.data.UiSection;
 import com.crussion.moissanite.ui.data.UiSwitch;
 import com.crussion.moissanite.ui.data.UiButton;
+import com.crussion.moissanite.ui.navigation.ScreenIds;
 import com.mojang.blaze3d.platform.InputConstants;
 import java.util.List;
 
@@ -39,9 +42,13 @@ public final class UiDefinitions {
 	public static final UiSection GENERAL_GENERAL = GENERAL.section("General");
 
 	// Bindables
+	public static final UiSwitch ZOOM = GENERAL_GENERAL.toggle("Zoom", false);
+	public static final UiKeybind ZOOM_KEYBIND = GENERAL_GENERAL.keybind("Hold Zoom",
+			InputConstants.UNKNOWN.getValue());
 
 	// Visibilities
 	static {
+		ZOOM_KEYBIND.visibleWhen(ZOOM);
 	}
 
 	// Dungeons
@@ -198,6 +205,7 @@ public final class UiDefinitions {
 
 	// Sections
 	public static final UiSection CHAT_GENERAL = CHAT.section("General");
+	public static final UiSection CHAT_COMMAND_REPLACER = CHAT.section("Command Replacer");
 
 	// Bindables
 	public static final UiSwitch DISABLE_BLOCKS_IN_THE_WAY = CHAT_GENERAL.toggle("Disable blocks in the way!", false);
@@ -205,6 +213,8 @@ public final class UiDefinitions {
 	public static final UiSwitch DISABLE_ABILITY_COOLDOWN = CHAT_GENERAL.toggle("Disable ability cooldown", false);
 	public static final UiSwitch COMPACT_CHAT = CHAT_GENERAL.toggle("Compact Chat", false);
 	public static final UiSlider COMPACT_CHAT_TIME = CHAT_GENERAL.slider("Compact Chat Time", 1.0, 120.0, 10.0, 1.0);
+	public static final UiButton COMMAND_REPLACER_OPEN = CHAT_COMMAND_REPLACER.button("Command Replacer Editor", "Open",
+			button -> UiEntrypoints.open(ScreenIds.COMMAND_REPLACER));
 
 	// Visibilities
 	static {
@@ -387,8 +397,16 @@ public final class UiDefinitions {
 			.number("Auto Experiments Serum Count", 0, 3, 0);
 	public static final UiSwitch AUTO_EXPERIMENTS_GET_MAX_XP = CHEATS_AUTO_EXPERIMENTATION
 			.toggle("Auto Experiments Get Max XP", false);
+	public static final UiNumber AUTO_EXPERIMENTS_ENCHANTING_LEVEL = CHEATS_AUTO_EXPERIMENTATION
+			.number("Auto Enchanting Level", 1, 60, 60);
+	public static final UiButton AUTO_EXPERIMENTS_MACRO_START = CHEATS_AUTO_EXPERIMENTATION
+			.button("Auto Enchanting Start", "Start", button -> AutoExperimentMacro.start());
+	public static final UiButton AUTO_EXPERIMENTS_MACRO_STOP = CHEATS_AUTO_EXPERIMENTATION
+			.button("Auto Enchanting Stop", "Stop", button -> AutoExperimentMacro.stop());
 
 	public static final UiSwitch AUTO_DIRECTION = KUUDRA_CHEATS.toggle("Auto Direction", false);
+	public static final UiSwitch AUTO_DIRECTION_AUTO_HYPERION = KUUDRA_CHEATS.toggle("Auto Hyperion", false);
+	public static final UiSwitch AUTO_DIRECTION_AUTO_REAPER = KUUDRA_CHEATS.toggle("Auto Reaper", false);
 	public static final UiSwitch AUTO_PEARL = KUUDRA_CHEATS.toggle("Auto Pearl", false);
 	public static final UiSwitch AUTO_PEARL_DEBUG = KUUDRA_CHEATS.toggle("Auto Pearl Debug", false);
 	public static final UiKeybind AUTO_PEARL_KEYBIND = KUUDRA_CHEATS.keybind("Toggle Auto Pearl",
@@ -397,6 +415,10 @@ public final class UiDefinitions {
 			0.0, 1.0);
 	public static final UiSlider AUTO_PEARL_KUUDRA_TIER = KUUDRA_CHEATS.slider("Auto Pearl Kuudra Tier", 1.0, 5.0, 5.0,
 			1.0);
+	public static final UiSlider AUTO_PEARL_ROTATION_MULTIPLIER = KUUDRA_CHEATS.slider(
+			"Auto Pearl Rotation Multiplier", 0.0, 2.0, 0.4, 0.1);
+	public static final UiSlider AUTO_PEARL_INACCURACY = KUUDRA_CHEATS.slider("Auto Pearl Inaccuracy", 0.0, 1.0, 0.0,
+			0.01);
 	public static final UiSlider AUTO_PEARL_X = KUUDRA_CHEATS.slider("Auto Pearl X", -10000.0, 10000.0, 6.0, 1.0);
 	public static final UiSlider AUTO_PEARL_Y = KUUDRA_CHEATS.slider("Auto Pearl Y", -10000.0, 10000.0, 6.0, 1.0);
 	public static final UiButton AUTO_PEARL_MOVE = KUUDRA_CHEATS.button("Auto Pearl Move", "Move",
@@ -407,6 +429,8 @@ public final class UiDefinitions {
 	public static final UiSwitch AUTO_REND = KUUDRA_CHEATS.toggle("Auto Rend", false);
 	public static final UiSwitch AUTO_REND_HARDCODE = KUUDRA_CHEATS.toggle("Auto Rend Hardcode", true);
 	public static final UiSwitch AUTO_REND_DEBUG = KUUDRA_CHEATS.toggle("Auto Rend Debug", false);
+	public static final UiSwitch AUTO_REND_AUTO_BACK_PEARL = KUUDRA_CHEATS.toggle("Auto Back Pearl", true);
+	public static final UiSwitch AUTO_REND_TERMINATOR_PULL = KUUDRA_CHEATS.toggle("Terminator Pull", false);
 	public static final UiKeybind AUTO_REND_TRIGGER_KEYBIND = KUUDRA_CHEATS.keybind("Trigger Auto Rend DEBUG",
 			InputConstants.UNKNOWN.getValue());
 	public static final UiKeybind AUTO_REND_OLD_TRIGGER_KEYBIND = KUUDRA_CHEATS.keybind("Trigger Auto Rend OLD DEBUG",
@@ -415,6 +439,7 @@ public final class UiDefinitions {
 			1.0, 0.1);
 	public static final UiSlider AUTO_REND_HYPERION = KUUDRA_CHEATS.slider("Hyperion", -1.0, 9.0, -1.0, 1.0);
 	public static final UiSlider AUTO_REND_BONEMERANG = KUUDRA_CHEATS.slider("Bonemerang", -1.0, 9.0, -1.0, 1.0);
+	public static final UiSlider AUTO_REND_TERMINATOR = KUUDRA_CHEATS.slider("Terminator", -1.0, 9.0, -1.0, 1.0);
 	public static final UiSlider AUTO_REND_ATOMSPLIT = KUUDRA_CHEATS.slider("Atomsplit", -1.0, 9.0, -1.0, 1.0);
 	public static final UiSlider AUTO_REND_ENDSTONE = KUUDRA_CHEATS.slider("Endstone", -1.0, 9.0, -1.0, 1.0);
 	public static final UiSlider AUTO_REND_PEARLS = KUUDRA_CHEATS.slider("Pearls", -1.0, 9.0, -1.0, 1.0);
@@ -447,10 +472,17 @@ public final class UiDefinitions {
 		AUTO_EXPERIMENTS_AUTO_CLOSE.visibleWhen(AUTO_EXPERIMENTS);
 		AUTO_EXPERIMENTS_SERUM_COUNT.visibleWhen(AUTO_EXPERIMENTS);
 		AUTO_EXPERIMENTS_GET_MAX_XP.visibleWhen(AUTO_EXPERIMENTS);
+		AUTO_EXPERIMENTS_MACRO_STOP.visibleWhen(AutoExperimentMacro::isRunning);
+		AUTO_DIRECTION_AUTO_HYPERION.visibleWhen(AUTO_DIRECTION);
+		AUTO_DIRECTION_AUTO_REAPER.visibleWhen(AUTO_DIRECTION);
 		AUTO_REND_HARDCODE.visibleWhen(AUTO_REND);
 		AUTO_REND_DEBUG.visibleWhen(AUTO_REND);
+		AUTO_REND_AUTO_BACK_PEARL.visibleWhen(AUTO_REND);
+		AUTO_REND_TERMINATOR_PULL.visibleWhen(AUTO_REND);
 		AUTO_PEARL_TALISMAN_TIER.visibleWhen(AUTO_PEARL);
 		AUTO_PEARL_KUUDRA_TIER.visibleWhen(AUTO_PEARL);
+		AUTO_PEARL_ROTATION_MULTIPLIER.visibleWhen(AUTO_PEARL);
+		AUTO_PEARL_INACCURACY.visibleWhen(AUTO_PEARL);
 		AUTO_PEARL_X.visibleWhen(() -> false);
 		AUTO_PEARL_Y.visibleWhen(() -> false);
 		AUTO_PEARL_MOVE.visibleWhen(AUTO_PEARL);
@@ -462,6 +494,8 @@ public final class UiDefinitions {
 		AUTO_REND_ROTATION_MULTIPLIER.visibleWhen(AUTO_REND);
 		AUTO_REND_HYPERION.visibleWhen(AUTO_REND);
 		AUTO_REND_BONEMERANG.visibleWhen(AUTO_REND);
+		AUTO_REND_TERMINATOR.visibleWhen(
+				() -> Boolean.TRUE.equals(AUTO_REND.get()) && Boolean.TRUE.equals(AUTO_REND_TERMINATOR_PULL.get()));
 		AUTO_REND_ATOMSPLIT.visibleWhen(AUTO_REND);
 		AUTO_REND_ENDSTONE.visibleWhen(AUTO_REND);
 		AUTO_REND_PEARLS.visibleWhen(AUTO_REND);
@@ -503,7 +537,7 @@ public final class UiDefinitions {
 	public static final UiInput SPOOFER_BLACKLISTED_MODS = SPOOFER_FILTERS.input("Blacklisted Mods", "moissanite")
 			.maxLength(4096);
 	public static final UiSwitch SPOOFER_DISABLE_CUSTOM_PAYLOADS = SPOOFER_FILTERS.toggle("Disable Custom Payloads",
-			true);
+			false);
 	public static final UiInput SPOOFER_ALLOWED_CUSTOM_PAYLOAD_CHANNELS = SPOOFER_FILTERS
 			.input("Allowed Payload Channels", "").maxLength(4096);
 

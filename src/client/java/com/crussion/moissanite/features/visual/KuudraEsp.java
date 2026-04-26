@@ -3,6 +3,7 @@ package com.crussion.moissanite.features.visual;
 import com.crussion.moissanite.definitions.UiDefinitions;
 import com.crussion.moissanite.mixin.client.RenderTypeAccessor;
 import com.crussion.moissanite.util.kuudra.KuudraEntityFinder;
+import com.crussion.moissanite.util.scoreboard.ScoreboardAreaMatcher;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.platform.DepthTestFunction;
 import com.mojang.blaze3d.shaders.UniformType;
@@ -21,7 +22,8 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.Shapes;
 
 public final class KuudraEsp {
-	private static final RenderType KUUDRA_ESP_RENDER_TYPE = createKuudraEspRenderType();
+	private static final String KUUDRA_HOLLOW = "Kuudra's Hollow";
+	private static RenderType kuudraEspRenderType;
 
 	private static boolean initialized;
 
@@ -48,6 +50,9 @@ public final class KuudraEsp {
 		if (!Boolean.TRUE.equals(UiDefinitions.KUUDRA_ESP.get())) {
 			return;
 		}
+		if (!ScoreboardAreaMatcher.isInArea(KUUDRA_HOLLOW)) {
+			return;
+		}
 
 		MagmaCube kuudra = KuudraEntityFinder.findKuudra(client);
 		if (kuudra == null || context.matrices() == null || context.consumers() == null) {
@@ -61,7 +66,7 @@ public final class KuudraEsp {
 
 		ShapeRenderer.renderShape(
 				context.matrices(),
-				context.consumers().getBuffer(KUUDRA_ESP_RENDER_TYPE),
+				context.consumers().getBuffer(getKuudraEspRenderType()),
 				Shapes.create(box),
 				-cameraPos.x,
 				-cameraPos.y,
@@ -73,6 +78,13 @@ public final class KuudraEsp {
 	private static float resolveLineWidth(Double raw) {
 		double value = raw != null && Double.isFinite(raw) ? raw : 3.0;
 		return (float) Mth.clamp(value, 1.0, 10.0);
+	}
+
+	private static RenderType getKuudraEspRenderType() {
+		if (kuudraEspRenderType == null) {
+			kuudraEspRenderType = createKuudraEspRenderType();
+		}
+		return kuudraEspRenderType;
 	}
 
 	private static RenderType createKuudraEspRenderType() {
@@ -100,9 +112,9 @@ public final class KuudraEsp {
 		source.getShaderDefines().flags().forEach(builder::withShaderDefine);
 		source.getShaderDefines().values().forEach((key, value) -> applyNumericShaderDefine(builder, key, value));
 
-		RenderPipeline pipeline = builder.build();
+		RenderPipeline pipeline = RenderPipelines.register(builder.build());
 		RenderSetup setup = RenderSetup.builder(pipeline).createRenderSetup();
-		return RenderTypeAccessor.moissanite$invokeCreate("moissanite_kuudra_esp_lines", setup);
+		return RenderType.create("moissanite_kuudra_esp_lines", setup);
 	}
 
 	private static void applyNumericShaderDefine(RenderPipeline.Builder builder, String key, String value) {

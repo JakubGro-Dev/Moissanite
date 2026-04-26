@@ -10,6 +10,7 @@ import com.crussion.moissanite.util.inventory.HeldItemMatcher;
 import com.crussion.moissanite.util.inventory.HotbarItemSearch;
 import com.crussion.moissanite.util.kuudra.KuudraPhaseTracker;
 import com.crussion.moissanite.util.kuudra.KuudraTriggerArea;
+import com.crussion.moissanite.util.render.WorldTextRenderer;
 import com.crussion.moissanite.util.rotation.RotationController;
 import com.crussion.moissanite.util.scoreboard.ScoreboardAreaMatcher;
 
@@ -26,23 +27,29 @@ import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.ShapeRenderer;
 import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.monster.MagmaCube;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.Shapes;
-import org.joml.Matrix4f;
 
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
 public final class AutoRend_Reworked {
-	private static final RenderType AUTO_REND_TRIGGER_RENDER_TYPE = createAutoRendTriggerRenderType();
 	private static final String KUUDRA_HOLLOW = "Kuudra's Hollow";
 	private static final int SEQUENCE_TIMEOUT_TICKS = 220;
 	private static final int WORLD_LOAD_RESET_WINDOW_TICKS = 80;
@@ -58,21 +65,36 @@ public final class AutoRend_Reworked {
 	private static final int REND_RESULT_MID_COLOR = 0xFFFFFF55;
 	private static final int REND_RESULT_HIGH_COLOR = 0xFF55FF55;
 	private static final int REND_RESULT_HUD_DURATION_TICKS = 80;
-	private static final int REND_RESULT_FINISH_GRACE_TICKS = 2;
-	private static final float REND_RESULT_HUD_SCALE = 2.2f;
-	private static final int REND_RESULT_HUD_Y = 44;
-	private static final double REND_RESULT_DISPLAY_MULTIPLIER = 0.94D;
+	// Kuudra HP updates can land a few ticks after the pull finishes.
+	private static final int REND_RESULT_FINISH_GRACE_TICKS = 8;
+	private static final float REND_RESULT_HUD_SCALE = 3.5f;
+	private static final int REND_RESULT_HUD_Y = 450;
+	private static final double REND_RESULT_DISPLAY_MULTIPLIER = 1D;
 
 	private static final int SWAP_MIN_WAIT_TICKS = 1;
 	private static final int CLICK_MIN_WAIT_TICKS = 1;
 	private static final int OTHER_MIN_WAIT_TICKS = 2;
-	private static final int AFTER_BONE_RIGHT_CLICK_TICKS = 19;
 	private static final int ARMOR_SWAP_TIMEOUT_TICKS = 120;
+	private static final int BACKBONE_READY_DELAY_TICKS = 2;
+	private static final int BONE_TRACK_EXPECT_WINDOW_TICKS = 12;
+	private static final double BONE_TRACK_MAX_CANDIDATE_DIST_SQ = 16.0D;
+	private static final double BONE_TRACK_OWNER_PROMOTE_DIST_HARD_SQ = 36.0D;
+	private static final int BONE_TRACK_CANDIDATE_MAX_AGE_TICKS = 40;
+	private static final double BONE_TRACK_FWD_RAY_DOT_MIN = 0.85D;
+	private static final int BONE_TRACK_MAX_AGE_TICKS = 220;
+	private static final double BONE_TRACK_MARKER_HEAD_Y_BIG = 1.78D;
+	private static final double BONE_TRACK_MARKER_HEAD_Y_SMALL = 0.9D;
+	private static final double BONE_TRACK_HEAD_HALF_XZ = 0.75D;
+	private static final double BONE_TRACK_HEAD_HALF_Y = 0.15D;
+	private static final double BONE_TRACK_FALLBACK_OUTBOUND_DOT_MIN = 0.02D;
+	private static final double BONE_TRACK_FALLBACK_RETURNING_DOT_MAX = -0.02D;
 
 	private static final String BONEMERANG_ID = "STARRED_BONE_BOOMERANG";
 	private static final String ATOMSPLIT_ID = "ATOMSPLIT_KATANA";
 	private static final String ENDSTONE_ID = "END_STONE_SWORD";
 	private static final String PEARL_ID = "ENDER_PEARL";
+	private static final String TERMINATOR_ID = "TERMINATOR";
+	private static final String HYPERION_ID = "HYPERION";
 
 	private static final double PEARL_TARGET_X = -101.0D;
 	private static final double PEARL_TARGET_Y = 6.0D;
@@ -99,6 +121,19 @@ public final class AutoRend_Reworked {
 	private static String rendResultText = "";
 	private static int rendResultColor = REND_RESULT_BAD_COLOR;
 	private static int rendResultHudTicks;
+	private static int sequenceSessionId;
+	private static boolean armorSwapStarted;
+	private static boolean boneTrackingActive;
+	private static long boneExpectWindowEndTick = -1L;
+	private static long backboneReadyGameTime = -1L;
+	private static Vec3 boneThrowOrigin;
+	private static Vec3 boneThrowForward;
+	private static Vec3 boneThrowPlayerPos;
+	private static int currentBoneThrowSeq;
+	private static TrackedBoneStand trackedBoneStand;
+	private static final Map<Integer, CandidateBoneStand> trackedBoneCandidates = new HashMap<>();
+	private static final Set<Integer> seenBoneStandIds = new HashSet<>();
+	private static RenderType autoRendTriggerRenderType;
 
 	private AutoRend_Reworked() {
 	}
@@ -113,6 +148,7 @@ public final class AutoRend_Reworked {
 			worldLoadResetTicksRemaining = WORLD_LOAD_RESET_WINDOW_TICKS;
 			tryResetForKuudraWorldLoad();
 			resetRendResultState();
+			resetBackboneTracking();
 		});
 
 		ClientTickEvents.END_CLIENT_TICK.register(AutoRend_Reworked::handleClientTick);
@@ -138,6 +174,7 @@ public final class AutoRend_Reworked {
 			resetSequence();
 			return;
 		}
+		tickBackboneTracking(client);
 
 		if (sequenceRunning) {
 			tickSequence();
@@ -202,7 +239,7 @@ public final class AutoRend_Reworked {
 
 		Vec3 cameraPos = client.gameRenderer.getMainCamera().position();
 		for (AABB box : KuudraTriggerArea.getTriggerAabbs()) {
-			var lineBuffer = context.consumers().getBuffer(AUTO_REND_TRIGGER_RENDER_TYPE);
+			var lineBuffer = context.consumers().getBuffer(getAutoRendTriggerRenderType());
 			ShapeRenderer.renderShape(
 					context.matrices(),
 					lineBuffer,
@@ -212,7 +249,7 @@ public final class AutoRend_Reworked {
 					-cameraPos.z,
 					AUTO_REND_TRIGGER_COLOR,
 					AUTO_REND_TRIGGER_LINE_WIDTH);
-			renderActivationCoords(context, client, cameraPos, box);
+			renderActivationCoords(context, box);
 		}
 	}
 
@@ -235,38 +272,22 @@ public final class AutoRend_Reworked {
 		return isInDpsPhase();
 	}
 
-	private static void renderActivationCoords(WorldRenderContext context, Minecraft client, Vec3 cameraPos, AABB box) {
+	private static void renderActivationCoords(WorldRenderContext context, AABB box) {
 		Vec3 center = box.getCenter();
 		String label = formatCoordLabel(center);
-
-		context.matrices().pushPose();
-		context.matrices().translate(center.x - cameraPos.x, box.maxY - cameraPos.y + 0.35, center.z - cameraPos.z);
-		context.matrices().mulPose(client.gameRenderer.getMainCamera().rotation());
-		context.matrices().scale(-0.02f, -0.02f, 0.02f);
-
-		Matrix4f pose = context.matrices().last().pose();
-		float textWidth = client.font.width(label);
-		// Use the world render consumer for this pass; ending a different/global batch
-		// here
-		// can invalidate active builders and crash with "Not building!". - Crussion.
-		// For anyone that wants to change this (*baby cry* im not building)
-		var buffer = context.consumers();
-		client.font.drawInBatch(
-				label,
-				-textWidth / 2.0f,
-				0.0f,
-				AUTO_REND_TRIGGER_COLOR,
-				false,
-				pose,
-				buffer,
-				net.minecraft.client.gui.Font.DisplayMode.NORMAL,
-				0,
-				LightTexture.FULL_BRIGHT);
-		context.matrices().popPose();
+		Vec3 labelPos = new Vec3(center.x, box.maxY + 0.35D, center.z);
+		WorldTextRenderer.drawText(context, labelPos, label, AUTO_REND_TRIGGER_COLOR, 0.8f, true);
 	}
 
 	private static String formatCoordLabel(Vec3 center) {
 		return String.format(Locale.ROOT, "%.1f %.1f %.1f", center.x, center.y, center.z);
+	}
+
+	private static RenderType getAutoRendTriggerRenderType() {
+		if (autoRendTriggerRenderType == null) {
+			autoRendTriggerRenderType = createAutoRendTriggerRenderType();
+		}
+		return autoRendTriggerRenderType;
 	}
 
 	private static RenderType createAutoRendTriggerRenderType() {
@@ -294,9 +315,9 @@ public final class AutoRend_Reworked {
 		source.getShaderDefines().flags().forEach(builder::withShaderDefine);
 		source.getShaderDefines().values().forEach((key, value) -> applyNumericShaderDefine(builder, key, value));
 
-		RenderPipeline pipeline = builder.build();
+		RenderPipeline pipeline = RenderPipelines.register(builder.build());
 		RenderSetup setup = RenderSetup.builder(pipeline).createRenderSetup();
-		return RenderTypeAccessor.moissanite$invokeCreate("moissanite_auto_rend_trigger_lines", setup);
+		return RenderType.create("moissanite_auto_rend_trigger_lines", setup);
 	}
 
 	private static void applyNumericShaderDefine(RenderPipeline.Builder builder, String key, String value) {
@@ -322,9 +343,12 @@ public final class AutoRend_Reworked {
 			return;
 		}
 
+		sequenceSessionId++;
 		sequenceRunning = true;
 		sequenceUsedThisWorld = true;
 		sequenceElapsedTicks = 0;
+		resetArmorSwapState();
+		resetBackboneTracking();
 		enterStep(SequenceStep.SWAP_BONEMERANG);
 		sendAutoRendMessage("Sequence started.");
 	}
@@ -351,7 +375,9 @@ public final class AutoRend_Reworked {
 			case SWAP_ENDSTONE -> handleSwapEndstone();
 			case USE_ENDSTONE -> handleUseEndstone();
 			case SWAP_BONEMERANG_BACK -> handleSwapBonemerangBack();
+			case SWAP_TERMINATOR -> handleSwapTerminator();
 			case PULL_BONEMERANG -> handlePullBonemerang();
+			case PULL_TERMINATOR -> handlePullTerminator();
 			case ROTATE_TO_PEARL_POINT -> handleRotateToPearlPoint();
 			case SWAP_PEARLS -> handleSwapPearls();
 			case THROW_PEARL -> handleThrowPearl();
@@ -380,9 +406,13 @@ public final class AutoRend_Reworked {
 			stepStarted = true;
 			boolean usedBonemerang = PlayerInputActions.rightClick();
 			sendAutoRendMessage("Right click Bonemerang: " + actionStatus(usedBonemerang));
+			if (usedBonemerang) {
+				armBackboneTracking();
+			}
 		}
 
 		if (waitedAfterAction(SWAP_MIN_WAIT_TICKS)) {
+			startArmorSwapIfNeeded();
 			enterStep(SequenceStep.SWAP_ATOMSPLIT);
 		}
 	}
@@ -394,9 +424,8 @@ public final class AutoRend_Reworked {
 			boolean swapped = HotbarItemSearch.swapHeldItem(slot);
 			sendAutoRendMessage("Swap to Atomsplit (slot " + slot + "): " + actionStatus(swapped));
 		}
-		// Start armor swap right after Atomsplit swap; don't block on held-item verification.
-		
-		if (stepElapsedTicks >= SWAP_MIN_WAIT_TICKS) {
+
+		if (waitedAfterAction(SWAP_MIN_WAIT_TICKS)) {
 			enterStep(SequenceStep.SWAP_ARMOR);
 		}
 	}
@@ -404,28 +433,13 @@ public final class AutoRend_Reworked {
 	private static void handleSwapArmor() {
 		if (!stepStarted) {
 			stepStarted = true;
-			int armorSlot = UiDefinitions.AUTO_REND_SWAP_ARMOR.get().intValue();
-			armorSwapEnabled = armorSlot >= 1 && armorSlot <= 9;
-
-			if (!armorSwapEnabled) {
-				sendAutoRendMessage("Swap armor skipped (slider is -1/0).");
-			} else {
-				armorSwapRequested = AutoRendHelper.WDSwapSlot(armorSlot, success -> {
-					armorSwapResolved = true;
-					armorSwapSucceeded = success;
-				});
-
-				if (!armorSwapRequested) {
-					armorSwapResolved = true;
-					armorSwapSucceeded = false;
-				}
-				sendAutoRendMessage("Swap armor (slot " + armorSlot + "): " + actionStatus(armorSwapRequested));
-			}
+			startArmorSwapIfNeeded();
 		}
 
 		if (!armorSwapEnabled) {
-			if (waitedAfterAction(OTHER_MIN_WAIT_TICKS + AFTER_BONE_RIGHT_CLICK_TICKS)) {
+			if (isBackboneReady()) {
 				enterStep(SequenceStep.SWAP_ENDSTONE);
+				return;
 			}
 			return;
 		}
@@ -435,15 +449,11 @@ public final class AutoRend_Reworked {
 				armorSwapOutcomeLogged = true;
 				sendAutoRendMessage("Swap armor completion: " + actionStatus(armorSwapSucceeded));
 			}
-			if (waitedAfterAction(OTHER_MIN_WAIT_TICKS + AFTER_BONE_RIGHT_CLICK_TICKS)) {
+			if (armorSwapSucceeded && isBackboneReady()) {
 				enterStep(SequenceStep.SWAP_ENDSTONE);
+				return;
 			}
 			return;
-		}
-
-		if (waitedAfterAction(ARMOR_SWAP_TIMEOUT_TICKS)) {
-			sendAutoRendMessage("Swap armor timeout, continuing.");
-			enterStep(SequenceStep.SWAP_ENDSTONE);
 		}
 	}
 
@@ -466,6 +476,10 @@ public final class AutoRend_Reworked {
 			sendAutoRendMessage("Right click Endstone: " + actionStatus(usedEndstone));
 		}
 		if (waitedAfterAction(CLICK_MIN_WAIT_TICKS)) {
+			if (Boolean.TRUE.equals(UiDefinitions.AUTO_REND_TERMINATOR_PULL.get())) {
+				enterStep(SequenceStep.SWAP_TERMINATOR);
+				return;
+			}
 			enterStep(SequenceStep.SWAP_BONEMERANG_BACK);
 		}
 	}
@@ -482,27 +496,66 @@ public final class AutoRend_Reworked {
 		}
 	}
 
+	private static void handleSwapTerminator() {
+		int slot = UiDefinitions.AUTO_REND_TERMINATOR.get().intValue();
+		if (!stepStarted) {
+			stepStarted = true;
+			boolean swapped = HotbarItemSearch.swapHeldItem(slot);
+			sendAutoRendMessage("Swap to Terminator (slot " + slot + "): " + actionStatus(swapped));
+		}
+		if (isSwapReady(TERMINATOR_ID)) {
+			enterStep(SequenceStep.PULL_TERMINATOR);
+		}
+	}
+
 	private static void handlePullBonemerang() {
 		if (!stepStarted) {
 			stepStarted = true;
 			boolean pull = PlayerInputActions.leftClick();
 			beginRendResultWindow();
-			sendAutoRendMessage("Left click pull: " + actionStatus(pull));
+			sendAutoRendMessage("Left click Bonemerang pull: " + actionStatus(pull));
 		}
 		if (waitedAfterAction(CLICK_MIN_WAIT_TICKS)) {
-			enterStep(SequenceStep.ROTATE_TO_PEARL_POINT);
+			handleAfterPull();
 		}
 	}
 
+	private static void handlePullTerminator() {
+		if (!stepStarted) {
+			stepStarted = true;
+			boolean pull = PlayerInputActions.leftClick();
+			beginRendResultWindow();
+			sendAutoRendMessage("Left click Terminator pull: " + actionStatus(pull));
+		}
+		if (waitedAfterAction(CLICK_MIN_WAIT_TICKS)) {
+			handleAfterPull();
+		}
+	}
+
+	private static void handleAfterPull() {
+		if (Boolean.TRUE.equals(UiDefinitions.AUTO_REND_AUTO_BACK_PEARL.get())) {
+			enterStep(SequenceStep.ROTATE_TO_PEARL_POINT);
+			return;
+		}
+
+		sendAutoRendMessage("Sequence finished.");
+		markRendWindowFinished();
+		resetSequence();
+	}
+
 	private static void handleRotateToPearlPoint() {
+		int slot = UiDefinitions.AUTO_REND_PEARLS.get().intValue();
 		if (!stepStarted) {
 			stepStarted = true;
 			double multiplier = UiDefinitions.AUTO_REND_ROTATION_MULTIPLIER.get();
 			boolean rotated = RotationController.rotateTo(PEARL_TARGET_X, PEARL_TARGET_Y, PEARL_TARGET_Z, multiplier);
 			sendAutoRendMessage("Rotate to pearl point: " + actionStatus(rotated));
+			boolean swapped = HotbarItemSearch.swapHeldItem(slot);
+			sendAutoRendMessage("Swap to Pearls (slot " + slot + "): " + actionStatus(swapped));
 		}
-		if (waitedAfterAction(OTHER_MIN_WAIT_TICKS)) {
-			enterStep(SequenceStep.SWAP_PEARLS);
+
+		if (isSwapReady(PEARL_ID)) {
+			enterStep(SequenceStep.THROW_PEARL);
 		}
 	}
 
@@ -543,18 +596,15 @@ public final class AutoRend_Reworked {
 		currentStep = nextStep;
 		stepElapsedTicks = 0;
 		stepStarted = false;
-
-		armorSwapEnabled = false;
-		armorSwapRequested = false;
-		armorSwapResolved = false;
-		armorSwapSucceeded = false;
-		armorSwapOutcomeLogged = false;
 	}
 
 	private static void resetSequence() {
 		boolean wasRunning = sequenceRunning;
+		sequenceSessionId++;
 		sequenceRunning = false;
 		sequenceElapsedTicks = 0;
+		resetArmorSwapState();
+		resetBackboneTracking();
 		enterStep(SequenceStep.IDLE);
 		if (wasRunning && rendResultWindowActive && rendResultGraceTicks < 0) {
 			rendResultGraceTicks = 0;
@@ -576,6 +626,7 @@ public final class AutoRend_Reworked {
 	private static boolean hasAnyConfiguredItemSlot() {
 		return UiDefinitions.AUTO_REND_HYPERION.get() != -1
 				|| UiDefinitions.AUTO_REND_BONEMERANG.get() != -1
+				|| UiDefinitions.AUTO_REND_TERMINATOR.get() != -1
 				|| UiDefinitions.AUTO_REND_ATOMSPLIT.get() != -1
 				|| UiDefinitions.AUTO_REND_ENDSTONE.get() != -1
 				|| UiDefinitions.AUTO_REND_PEARLS.get() != -1;
@@ -590,6 +641,7 @@ public final class AutoRend_Reworked {
 		int foundCount = 0;
 		foundCount += scanItemAndUpdateSlider("Hyperion", "HYPERION", UiDefinitions.AUTO_REND_HYPERION);
 		foundCount += scanItemAndUpdateSlider("Bonemerang", BONEMERANG_ID, UiDefinitions.AUTO_REND_BONEMERANG);
+		foundCount += scanItemAndUpdateSlider("Terminator", TERMINATOR_ID, UiDefinitions.AUTO_REND_TERMINATOR);
 		foundCount += scanItemAndUpdateSlider("Atomsplit", ATOMSPLIT_ID, UiDefinitions.AUTO_REND_ATOMSPLIT);
 		foundCount += scanItemAndUpdateSlider("Endstone", ENDSTONE_ID, UiDefinitions.AUTO_REND_ENDSTONE);
 		foundCount += scanItemAndUpdateSlider("Pearls", PEARL_ID, UiDefinitions.AUTO_REND_PEARLS);
@@ -621,6 +673,524 @@ public final class AutoRend_Reworked {
 			return;
 		}
 		FeatureChat.sendPrefixed("Auto Rend Reworked", text);
+	}
+
+	private static void startArmorSwapIfNeeded() {
+		if (armorSwapStarted) {
+			return;
+		}
+
+		armorSwapStarted = true;
+		int armorSlot = UiDefinitions.AUTO_REND_SWAP_ARMOR.get().intValue();
+		armorSwapEnabled = armorSlot >= 1 && armorSlot <= 9;
+		if (!armorSwapEnabled) {
+			sendAutoRendMessage("Swap armor skipped (slider is -1/0).");
+			return;
+		}
+
+		int requestSessionId = sequenceSessionId;
+		armorSwapRequested = AutoRendHelper.WDSwapSlot(armorSlot, success -> {
+			if (requestSessionId != sequenceSessionId) {
+				return;
+			}
+			armorSwapResolved = true;
+			armorSwapSucceeded = success;
+		});
+
+		if (!armorSwapRequested) {
+			armorSwapResolved = true;
+			armorSwapSucceeded = false;
+		}
+		sendAutoRendMessage("Swap armor (slot " + armorSlot + "): " + actionStatus(armorSwapRequested));
+	}
+
+	private static void resetArmorSwapState() {
+		armorSwapStarted = false;
+		armorSwapEnabled = false;
+		armorSwapRequested = false;
+		armorSwapResolved = false;
+		armorSwapSucceeded = false;
+		armorSwapOutcomeLogged = false;
+	}
+
+	private static void armBackboneTracking() {
+		Minecraft client = Minecraft.getInstance();
+		if (client == null || client.player == null || client.level == null) {
+			return;
+		}
+
+		currentBoneThrowSeq++;
+		if (currentBoneThrowSeq == Integer.MAX_VALUE) {
+			currentBoneThrowSeq = 1;
+		}
+		boneTrackingActive = true;
+		boneExpectWindowEndTick = client.level.getGameTime() + BONE_TRACK_EXPECT_WINDOW_TICKS;
+		backboneReadyGameTime = -1L;
+		trackedBoneStand = null;
+		trackedBoneCandidates.clear();
+		seenBoneStandIds.clear();
+		boneThrowOrigin = new Vec3(client.player.getX(), client.player.getEyeY(), client.player.getZ());
+		boneThrowForward = normalizeOrNull(client.player.getLookAngle());
+		boneThrowPlayerPos = new Vec3(client.player.getX(), client.player.getY(), client.player.getZ());
+		captureExistingBoneStandIds(client);
+		sendAutoRendMessage("Backbone tracking armed.");
+	}
+
+	private static void tickBackboneTracking(Minecraft client) {
+		if (client == null || client.player == null || client.level == null) {
+			return;
+		}
+		long gameTime = client.level.getGameTime();
+		if (boneTrackingActive && boneExpectWindowEndTick >= 0L && gameTime > boneExpectWindowEndTick) {
+			boneTrackingActive = false;
+			boneExpectWindowEndTick = -1L;
+		}
+
+		if (!boneTrackingActive && trackedBoneCandidates.isEmpty() && trackedBoneStand == null) {
+			return;
+		}
+		if (boneTrackingActive && gameTime <= boneExpectWindowEndTick) {
+			scanForBoneStandCandidates(client);
+		}
+		tickBoneStandCandidates(client);
+		if (trackedBoneStand == null) {
+			return;
+		}
+
+		ArmorStand stand = findTrackedBoneStand(client);
+		if (stand == null || !stand.isAlive() || !isBoneStand(stand)) {
+			trackedBoneStand = null;
+			return;
+		}
+
+		Vec3 headPos = getArmorStandHeadPos(stand);
+		if (trackedBoneStand.prevHeadPos == null) {
+			trackedBoneStand.prevHeadPos = headPos;
+		}
+
+		trackedBoneStand.currHeadPos = headPos;
+		Vec3 delta = subtract(trackedBoneStand.currHeadPos, trackedBoneStand.prevHeadPos);
+		double deltaLengthSq = lengthSquared(delta);
+		updateTrackedBonePhase(client, trackedBoneStand, delta, deltaLengthSq);
+		trackedBoneStand.ticksAlive++;
+		if (trackedBoneStand.ticksAlive > BONE_TRACK_MAX_AGE_TICKS) {
+			trackedBoneStand = null;
+			return;
+		}
+
+		if (deltaLengthSq > 1.0E-12D && detectBackboneHit(client, trackedBoneStand)) {
+			backboneReadyGameTime = gameTime + BACKBONE_READY_DELAY_TICKS;
+			boneTrackingActive = false;
+			trackedBoneStand = null;
+			sendAutoRendMessage("Backbone detected, waiting " + BACKBONE_READY_DELAY_TICKS + " ticks.");
+			return;
+		}
+
+		trackedBoneStand.prevHeadPos = trackedBoneStand.currHeadPos;
+	}
+
+	private static void captureExistingBoneStandIds(Minecraft client) {
+		if (client == null || client.level == null) {
+			return;
+		}
+		for (Entity entity : client.level.entitiesForRendering()) {
+			if (!(entity instanceof ArmorStand stand) || !stand.isAlive() || !isBoneStand(stand)) {
+				continue;
+			}
+			seenBoneStandIds.add(stand.getId());
+		}
+	}
+
+	private static void scanForBoneStandCandidates(Minecraft client) {
+		if (client == null || client.player == null || client.level == null || !boneTrackingActive) {
+			return;
+		}
+
+		for (Entity entity : client.level.entitiesForRendering()) {
+			if (!(entity instanceof ArmorStand stand) || !stand.isAlive() || !isBoneStand(stand)) {
+				continue;
+			}
+			int entityId = stand.getId();
+			if (!seenBoneStandIds.add(entityId)) {
+				continue;
+			}
+			if (trackedBoneStand != null && trackedBoneStand.entityId == entityId) {
+				continue;
+			}
+			if (trackedBoneCandidates.containsKey(entityId)) {
+				continue;
+			}
+			registerBoneStandCandidate(client, stand);
+		}
+	}
+
+	private static void registerBoneStandCandidate(Minecraft client, ArmorStand stand) {
+		if (client == null || client.player == null || stand == null) {
+			return;
+		}
+
+		Vec3 standPos = new Vec3(stand.getX(), stand.getY(), stand.getZ());
+		Vec3 playerPos = new Vec3(client.player.getX(), client.player.getY(), client.player.getZ());
+		double minPlayerDistSq = Math.min(
+				distanceSquared(standPos, playerPos),
+				boneThrowPlayerPos == null ? Double.POSITIVE_INFINITY : distanceSquared(standPos, boneThrowPlayerPos));
+		if (minPlayerDistSq > BONE_TRACK_MAX_CANDIDATE_DIST_SQ) {
+			return;
+		}
+
+		Vec3 headPos = getArmorStandHeadPos(stand);
+		boolean ownerLocal = isLocalThrowCandidate(headPos);
+		trackedBoneCandidates.put(stand.getId(), new CandidateBoneStand(stand.getId(), ownerLocal));
+	}
+
+	private static void tickBoneStandCandidates(Minecraft client) {
+		if (client == null || client.level == null || trackedBoneCandidates.isEmpty()) {
+			return;
+		}
+
+		Iterator<Map.Entry<Integer, CandidateBoneStand>> iterator = trackedBoneCandidates.entrySet().iterator();
+		while (iterator.hasNext()) {
+			Map.Entry<Integer, CandidateBoneStand> entry = iterator.next();
+			int entityId = entry.getKey();
+			if (trackedBoneStand != null && trackedBoneStand.entityId == entityId) {
+				iterator.remove();
+				continue;
+			}
+
+			ArmorStand stand = findBoneStandById(client, entityId);
+			if (stand == null || !stand.isAlive()) {
+				iterator.remove();
+				continue;
+			}
+
+			CandidateBoneStand candidate = entry.getValue();
+			candidate.ageTicks++;
+			boolean promoted = tryPromoteBoneStandCandidate(stand, candidate);
+			if (promoted || candidate.ageTicks > BONE_TRACK_CANDIDATE_MAX_AGE_TICKS) {
+				iterator.remove();
+			}
+		}
+	}
+
+	private static boolean tryPromoteBoneStandCandidate(ArmorStand stand, CandidateBoneStand candidate) {
+		if (!isBoneStand(stand)) {
+			return false;
+		}
+
+		int entityId = stand.getId();
+		if (trackedBoneStand != null && trackedBoneStand.entityId == entityId) {
+			return true;
+		}
+
+		boolean ownerLocal = candidate.ownerLocal;
+		if (ownerLocal && boneThrowForward != null && boneThrowOrigin != null) {
+			Vec3 headPos = getArmorStandHeadPos(stand);
+			Vec3 delta = subtract(headPos, boneThrowOrigin);
+			double deltaLengthSq = lengthSquared(delta);
+			if (deltaLengthSq > BONE_TRACK_OWNER_PROMOTE_DIST_HARD_SQ) {
+				ownerLocal = false;
+			} else {
+				double deltaLength = Math.sqrt(deltaLengthSq);
+				if (deltaLength > 1.0E-6D) {
+					double forwardDot = dot(boneThrowForward, scale(delta, 1.0D / deltaLength));
+					if (forwardDot < BONE_TRACK_FWD_RAY_DOT_MIN) {
+						ownerLocal = false;
+					}
+				} else {
+					ownerLocal = false;
+				}
+			}
+		}
+
+		claimTrackedBoneStand(stand, ownerLocal);
+		return true;
+	}
+
+	private static void claimTrackedBoneStand(ArmorStand stand, boolean ownerLocal) {
+		if (stand == null) {
+			return;
+		}
+		if (trackedBoneStand != null && trackedBoneStand.throwSeq == currentBoneThrowSeq) {
+			return;
+		}
+
+		trackedBoneStand = new TrackedBoneStand(
+				stand.getId(),
+				ownerLocal,
+				getArmorStandHeadPos(stand),
+				currentBoneThrowSeq,
+				boneThrowOrigin,
+				boneThrowForward);
+		sendAutoRendMessage("Backbone stand claimed: " + stand.getId() + ".");
+	}
+
+	private static void updateTrackedBonePhase(Minecraft client, TrackedBoneStand tracked, Vec3 delta, double deltaLengthSq) {
+		if (client == null || client.player == null || tracked == null || tracked.currHeadPos == null) {
+			return;
+		}
+
+		BonePhase previousPhase = tracked.phase;
+		if (tracked.origin != null && tracked.forwardUsed != null) {
+			if (!tracked.forwardFixed && deltaLengthSq > 1.0E-6D) {
+				if (dot(delta, tracked.forwardUsed) < 0.0D) {
+					tracked.forwardUsed = scale(tracked.forwardUsed, -1.0D);
+				}
+				tracked.forwardFixed = true;
+			}
+
+			double currentAlong = dot(tracked.forwardUsed, subtract(tracked.currHeadPos, tracked.origin));
+			if (!Double.isNaN(tracked.prevAlong)) {
+				double deltaAlong = currentAlong - tracked.prevAlong;
+				if (deltaAlong > 1.0E-4D) {
+					tracked.phase = BonePhase.OUTBOUND;
+					tracked.sawOutbound = true;
+				} else if (deltaAlong < -1.0E-4D && tracked.sawOutbound) {
+					tracked.phase = BonePhase.RETURNING;
+				}
+				if (!tracked.hasTurned && previousPhase == BonePhase.OUTBOUND && tracked.phase == BonePhase.RETURNING) {
+					tracked.hasTurned = true;
+				}
+				if (tracked.hasTurned) {
+					tracked.phase = BonePhase.RETURNING;
+				}
+			}
+			tracked.prevAlong = currentAlong;
+			return;
+		}
+
+		Vec3 toPlayer = tracked.currHeadPos.subtract(client.player.getX(), client.player.getY(), client.player.getZ());
+		double playerLengthSq = lengthSquared(toPlayer);
+		double phaseDot = 0.0D;
+		if (deltaLengthSq >= 1.0E-12D && playerLengthSq >= 1.0E-12D) {
+			phaseDot = dot(delta, toPlayer) / Math.sqrt(deltaLengthSq * playerLengthSq);
+		}
+
+		if (phaseDot > BONE_TRACK_FALLBACK_OUTBOUND_DOT_MIN) {
+			tracked.phase = BonePhase.OUTBOUND;
+		} else if (phaseDot < BONE_TRACK_FALLBACK_RETURNING_DOT_MAX) {
+			tracked.phase = BonePhase.RETURNING;
+		}
+		if (previousPhase != BonePhase.RETURNING && tracked.phase == BonePhase.RETURNING) {
+			tracked.hasTurned = true;
+		}
+	}
+
+	private static boolean detectBackboneHit(Minecraft client, TrackedBoneStand tracked) {
+		if (client == null || client.player == null || tracked == null || tracked.prevHeadPos == null || tracked.currHeadPos == null) {
+			return false;
+		}
+
+		MagmaCube boss = KuudraPhaseTracker.getKuudraEntity();
+		if (boss == null || !boss.isAlive()) {
+			return false;
+		}
+
+		AABB targetBox = boss.getBoundingBox().inflate(BONE_TRACK_HEAD_HALF_XZ, BONE_TRACK_HEAD_HALF_Y, BONE_TRACK_HEAD_HALF_XZ);
+		double segmentX = tracked.currHeadPos.x - tracked.prevHeadPos.x;
+		double segmentY = tracked.currHeadPos.y - tracked.prevHeadPos.y;
+		double segmentZ = tracked.currHeadPos.z - tracked.prevHeadPos.z;
+		double segmentLengthSq = (segmentX * segmentX) + (segmentY * segmentY) + (segmentZ * segmentZ);
+		if (segmentLengthSq < 1.0E-9D) {
+			segmentLengthSq = 1.0E-9D;
+		}
+
+		double dotStart = (segmentX * (tracked.prevHeadPos.x - client.player.getX()))
+				+ (segmentY * (tracked.prevHeadPos.y - client.player.getY()))
+				+ (segmentZ * (tracked.prevHeadPos.z - client.player.getZ()));
+		double dotEnd = (segmentX * (tracked.currHeadPos.x - client.player.getX()))
+				+ (segmentY * (tracked.currHeadPos.y - client.player.getY()))
+				+ (segmentZ * (tracked.currHeadPos.z - client.player.getZ()));
+		boolean crossesPlayerProjection = dotStart > 0.0D && dotEnd < 0.0D;
+		double projectionT = -dotStart / segmentLengthSq;
+		boolean projectionOnSegment = projectionT >= 0.0D && projectionT <= 1.0D;
+		if (!projectionOnSegment) {
+			crossesPlayerProjection = false;
+		}
+
+		Vec3 playerProjection = new Vec3(
+				tracked.prevHeadPos.x + (segmentX * projectionT),
+				tracked.prevHeadPos.y + (segmentY * projectionT),
+				tracked.prevHeadPos.z + (segmentZ * projectionT));
+
+		if (crossesPlayerProjection) {
+			return segmentIntersectsAABB(targetBox, playerProjection, tracked.currHeadPos)
+					|| containsPoint(targetBox, tracked.currHeadPos)
+					|| containsPoint(targetBox, playerProjection);
+		}
+
+		boolean wholeSegmentHit = segmentIntersectsAABB(targetBox, tracked.prevHeadPos, tracked.currHeadPos)
+				|| containsPoint(targetBox, tracked.prevHeadPos)
+				|| containsPoint(targetBox, tracked.currHeadPos);
+		BonePhase fallbackPhase = tracked.hasTurned ? BonePhase.RETURNING : BonePhase.OUTBOUND;
+		return wholeSegmentHit && fallbackPhase == BonePhase.RETURNING;
+	}
+
+	private static ArmorStand findTrackedBoneStand(Minecraft client) {
+		if (trackedBoneStand == null) {
+			return null;
+		}
+		return findBoneStandById(client, trackedBoneStand.entityId);
+	}
+
+	private static ArmorStand findBoneStandById(Minecraft client, int entityId) {
+		if (client == null || client.level == null) {
+			return null;
+		}
+		for (Entity entity : client.level.entitiesForRendering()) {
+			if (entity instanceof ArmorStand stand && stand.getId() == entityId) {
+				return stand;
+			}
+		}
+		return null;
+	}
+
+	private static boolean isBoneStand(ArmorStand stand) {
+		return stand != null
+				&& stand.getItemBySlot(EquipmentSlot.MAINHAND).getItem() == Items.BONE;
+	}
+
+	private static boolean isLocalThrowCandidate(Vec3 headPos) {
+		if (headPos == null || boneThrowOrigin == null || boneThrowForward == null) {
+			return false;
+		}
+		Vec3 delta = subtract(headPos, boneThrowOrigin);
+		double deltaLengthSq = lengthSquared(delta);
+		if (deltaLengthSq <= 1.0E-6D || deltaLengthSq > BONE_TRACK_OWNER_PROMOTE_DIST_HARD_SQ) {
+			return false;
+		}
+		double inverseLength = 1.0D / Math.sqrt(deltaLengthSq);
+		return dot(boneThrowForward, scale(delta, inverseLength)) >= BONE_TRACK_FWD_RAY_DOT_MIN;
+	}
+
+	private static Vec3 getArmorStandHeadPos(ArmorStand stand) {
+		double yOffset = stand.isSmall() ? BONE_TRACK_MARKER_HEAD_Y_SMALL : BONE_TRACK_MARKER_HEAD_Y_BIG;
+		return new Vec3(stand.getX(), stand.getY() + yOffset, stand.getZ());
+	}
+
+	private static boolean isBackboneReady() {
+		Minecraft client = Minecraft.getInstance();
+		return client != null
+				&& client.level != null
+				&& backboneReadyGameTime >= 0L
+				&& client.level.getGameTime() >= backboneReadyGameTime;
+	}
+
+	private static void resetBackboneTracking() {
+		boneTrackingActive = false;
+		boneExpectWindowEndTick = -1L;
+		backboneReadyGameTime = -1L;
+		boneThrowOrigin = null;
+		boneThrowForward = null;
+		boneThrowPlayerPos = null;
+		trackedBoneStand = null;
+		trackedBoneCandidates.clear();
+		seenBoneStandIds.clear();
+	}
+
+	private static boolean containsPoint(AABB box, Vec3 point) {
+		return box != null
+				&& point != null
+				&& point.x >= box.minX && point.x <= box.maxX
+				&& point.y >= box.minY && point.y <= box.maxY
+				&& point.z >= box.minZ && point.z <= box.maxZ;
+	}
+
+	private static boolean segmentIntersectsAABB(AABB box, Vec3 start, Vec3 end) {
+		double tMin = 0.0D;
+		double tMax = 1.0D;
+
+		double deltaX = end.x - start.x;
+		if (Math.abs(deltaX) <= 1.0E-12D) {
+			if (start.x < box.minX || start.x > box.maxX) {
+				return false;
+			}
+		} else {
+			double inverse = 1.0D / deltaX;
+			double t1 = (box.minX - start.x) * inverse;
+			double t2 = (box.maxX - start.x) * inverse;
+			if (t1 > t2) {
+				double swap = t1;
+				t1 = t2;
+				t2 = swap;
+			}
+			tMin = Math.max(tMin, t1);
+			tMax = Math.min(tMax, t2);
+			if (tMin > tMax) {
+				return false;
+			}
+		}
+
+		double deltaY = end.y - start.y;
+		if (Math.abs(deltaY) <= 1.0E-12D) {
+			if (start.y < box.minY || start.y > box.maxY) {
+				return false;
+			}
+		} else {
+			double inverse = 1.0D / deltaY;
+			double t1 = (box.minY - start.y) * inverse;
+			double t2 = (box.maxY - start.y) * inverse;
+			if (t1 > t2) {
+				double swap = t1;
+				t1 = t2;
+				t2 = swap;
+			}
+			tMin = Math.max(tMin, t1);
+			tMax = Math.min(tMax, t2);
+			if (tMin > tMax) {
+				return false;
+			}
+		}
+
+		double deltaZ = end.z - start.z;
+		if (Math.abs(deltaZ) <= 1.0E-12D) {
+			return start.z >= box.minZ && start.z <= box.maxZ;
+		}
+
+		double inverse = 1.0D / deltaZ;
+		double t1 = (box.minZ - start.z) * inverse;
+		double t2 = (box.maxZ - start.z) * inverse;
+		if (t1 > t2) {
+			double swap = t1;
+			t1 = t2;
+			t2 = swap;
+		}
+		tMin = Math.max(tMin, t1);
+		tMax = Math.min(tMax, t2);
+		return tMin <= tMax;
+	}
+
+	private static Vec3 normalizeOrNull(Vec3 vec) {
+		if (vec == null) {
+			return null;
+		}
+		double lengthSq = lengthSquared(vec);
+		if (lengthSq <= 1.0E-12D) {
+			return null;
+		}
+		return scale(vec, 1.0D / Math.sqrt(lengthSq));
+	}
+
+	private static Vec3 subtract(Vec3 left, Vec3 right) {
+		return new Vec3(left.x - right.x, left.y - right.y, left.z - right.z);
+	}
+
+	private static Vec3 scale(Vec3 vec, double factor) {
+		return new Vec3(vec.x * factor, vec.y * factor, vec.z * factor);
+	}
+
+	private static double dot(Vec3 left, Vec3 right) {
+		return (left.x * right.x) + (left.y * right.y) + (left.z * right.z);
+	}
+
+	private static double lengthSquared(Vec3 vec) {
+		return dot(vec, vec);
+	}
+
+	private static double distanceSquared(Vec3 left, Vec3 right) {
+		double deltaX = left.x - right.x;
+		double deltaY = left.y - right.y;
+		double deltaZ = left.z - right.z;
+		return (deltaX * deltaX) + (deltaY * deltaY) + (deltaZ * deltaZ);
 	}
 
 	private static String actionStatus(boolean success) {
@@ -770,6 +1340,12 @@ public final class AutoRend_Reworked {
 				&& Boolean.TRUE.equals(UiDefinitions.REND_DAMAGE_AUTO_REND_SCREEN.get());
 	}
 
+	private enum BonePhase {
+		UNKNOWN,
+		OUTBOUND,
+		RETURNING
+	}
+
 	private enum SequenceStep {
 		IDLE,
 		SWAP_BONEMERANG,
@@ -779,9 +1355,48 @@ public final class AutoRend_Reworked {
 		SWAP_ENDSTONE,
 		USE_ENDSTONE,
 		SWAP_BONEMERANG_BACK,
+		SWAP_TERMINATOR,
 		PULL_BONEMERANG,
+		PULL_TERMINATOR,
 		ROTATE_TO_PEARL_POINT,
 		SWAP_PEARLS,
 		THROW_PEARL
+	}
+
+	private static final class TrackedBoneStand {
+		private final int entityId;
+		private final boolean ownerLocal;
+		private final int throwSeq;
+		private final Vec3 origin;
+		private Vec3 forwardUsed;
+		private boolean forwardFixed;
+		private BonePhase phase = BonePhase.UNKNOWN;
+		private int ticksAlive;
+		private Vec3 prevHeadPos;
+		private Vec3 currHeadPos;
+		private double prevAlong = Double.NaN;
+		private boolean sawOutbound;
+		private boolean hasTurned;
+
+		private TrackedBoneStand(int entityId, boolean ownerLocal, Vec3 headPos, int throwSeq, Vec3 origin, Vec3 forward) {
+			this.entityId = entityId;
+			this.ownerLocal = ownerLocal;
+			this.throwSeq = throwSeq;
+			this.prevHeadPos = headPos;
+			this.currHeadPos = headPos;
+			this.origin = origin;
+			this.forwardUsed = forward;
+		}
+	}
+
+	private static final class CandidateBoneStand {
+		private final int entityId;
+		private final boolean ownerLocal;
+		private int ageTicks;
+
+		private CandidateBoneStand(int entityId, boolean ownerLocal) {
+			this.entityId = entityId;
+			this.ownerLocal = ownerLocal;
+		}
 	}
 }

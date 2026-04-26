@@ -65,7 +65,7 @@ public final class AutoExperiments {
 			resetAllState();
 			return;
 		}
-		if (!Boolean.TRUE.equals(UiDefinitions.AUTO_EXPERIMENTS.get())) {
+		if (!Boolean.TRUE.equals(UiDefinitions.AUTO_EXPERIMENTS.get()) && !AutoExperimentMacro.isRunning()) {
 			resetAllState();
 			return;
 		}
@@ -256,7 +256,7 @@ public final class AutoExperiments {
 	}
 
 	private static boolean shouldAutoClose() {
-		return Boolean.TRUE.equals(UiDefinitions.AUTO_EXPERIMENTS_AUTO_CLOSE.get());
+		return AutoExperimentMacro.isRunning() || Boolean.TRUE.equals(UiDefinitions.AUTO_EXPERIMENTS_AUTO_CLOSE.get());
 	}
 
 	private static boolean shouldGetMaxXp() {

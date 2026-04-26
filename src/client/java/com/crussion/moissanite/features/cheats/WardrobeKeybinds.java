@@ -72,6 +72,10 @@ public final class WardrobeKeybinds {
 	}
 
 	public static boolean requestSwapSlot(int slot, Consumer<Boolean> completion) {
+		if (!Boolean.TRUE.equals(UiDefinitions.ENABLE_GHOST_WARDROBE.get())) {
+			complete(completion, false);
+			return false;
+		}
 		int menuSlot = menuSlotForWardrobeSlot(slot);
 		if (menuSlot == -1) {
 			complete(completion, false);
@@ -92,6 +96,14 @@ public final class WardrobeKeybinds {
 			return false;
 		}
 		return true;
+	}
+
+	public static boolean isEnabledOrActive() {
+		return Boolean.TRUE.equals(UiDefinitions.ENABLE_GHOST_WARDROBE.get())
+				|| swapInProgress
+				|| awaitingWardrobe
+				|| clickSlotRegistered
+				|| closeContainerId != -1;
 	}
 
 	private static boolean wardrobe() {

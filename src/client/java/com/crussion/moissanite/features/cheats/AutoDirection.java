@@ -1,10 +1,14 @@
 package com.crussion.moissanite.features.cheats;
 
 import com.crussion.moissanite.definitions.UiDefinitions;
+import com.crussion.moissanite.util.input.PlayerInputActions;
+import com.crussion.moissanite.util.inventory.HeldItemMatcher;
+import com.crussion.moissanite.util.inventory.HotbarItemSearch;
 import com.crussion.moissanite.util.kuudra.KuudraEntityFinder;
 import com.crussion.moissanite.util.rotation.RotationController;
 import com.crussion.moissanite.util.scoreboard.ScoreboardAreaMatcher;
 import com.crussion.moissanite.util.text.TextNormalizer;
+import com.crussion.moissanite.util.tick.TickTaskScheduler;
 
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
@@ -14,7 +18,9 @@ import net.minecraft.world.entity.monster.MagmaCube;
 public final class AutoDirection {
 	private static final String KUUDRA_HOLLOW = "Kuudra's Hollow";
 	private static final String TRIGGER_CHAT = "[NPC] Elle: POW! SURELY THAT'S IT! I don't think he has any more in him!";
+	private static final String HYPERION_ID = "HYPERION";
 	private static final long WAIT_FOR_TP_MS = 7_000L;
+	private static final int HYPERION_CAST_DELAY_TICKS = 1;
 	private static final double DPS_Y_MIN = 5.9D;
 	private static final double DPS_Y_MAX = 6.1D;
 	private static final float HEALTH_MIN = 24_900.0F;
@@ -88,20 +94,45 @@ public final class AutoDirection {
 		double z = kuudra.getZ();
 
 		if (x < -128.0D) {
-			RotationController.rotateYawPitch(90.0D, 0.0D, 0.5D);
+			rotateAndHyperionCast(90.0D, 0.0D);
 			return;
 		}
 		if (z > -84.0D) {
-			RotationController.rotateYawPitch(0.0D, 0.0D, 0.5D);
+			rotateAndHyperionCast(0.0D, 0.0D);
 			return;
 		}
 		if (x > -72.0D) {
-			RotationController.rotateYawPitch(-90.0D, 0.0D, 0.5D);
+			rotateAndHyperionCast(-90.0D, 0.0D);
 			return;
 		}
 		if (z < -132.0D) {
-			RotationController.rotateYawPitch(179.0D, 0.0D, 0.5D);
+			rotateAndHyperionCast(179.0D, 0.0D);
 			return;
 		}
+	}
+
+	private static void rotateAndHyperionCast(double yaw, double pitch) {
+		RotationController.rotateYawPitch(yaw, pitch, 0.5D);
+		if (!Boolean.TRUE.equals(UiDefinitions.AUTO_DIRECTION_AUTO_HYPERION.get())) {
+			return;
+		}
+
+		int hyperionSlot = UiDefinitions.AUTO_REND_HYPERION.get().intValue();
+		if (!HotbarItemSearch.swapHeldItem(hyperionSlot)) {
+			return;
+		}
+
+		TickTaskScheduler.schedule(HYPERION_CAST_DELAY_TICKS, AutoDirection::tryAutoHyperionCast);
+	}
+
+	private static void tryAutoHyperionCast() {
+		if (!HeldItemMatcher.heldMatchesSkyblockId(HYPERION_ID)) {
+			return;
+		}
+		if (Boolean.TRUE.equals(UiDefinitions.AUTO_DIRECTION_AUTO_REAPER.get())) {
+			PlayerInputActions.shiftRightClick();
+			return;
+		}
+		PlayerInputActions.rightClick();
 	}
 }
