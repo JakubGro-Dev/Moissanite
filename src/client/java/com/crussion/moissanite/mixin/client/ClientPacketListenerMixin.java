@@ -4,6 +4,7 @@ import com.crussion.moissanite.features.cheats.AutoDirection;
 import com.crussion.moissanite.features.cheats.AutoPearl;
 import com.crussion.moissanite.features.cheats.WardrobeKeybinds;
 import com.crussion.moissanite.features.dungeons.terminals.DungeonsTerminals;
+import com.crussion.moissanite.features.kuudra.KuudraAutoSwapArmorRag;
 import com.crussion.moissanite.definitions.UiDefinitions;
 import com.crussion.moissanite.util.chat.SystemChatFilter;
 import com.crussion.moissanite.util.kuudra.KuudraPhaseTracker;
@@ -15,6 +16,7 @@ import net.minecraft.network.protocol.game.ClientboundContainerSetDataPacket;
 import net.minecraft.network.protocol.game.ClientboundOpenScreenPacket;
 import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
+import net.minecraft.network.protocol.game.ClientboundSoundPacket;
 import net.minecraft.network.protocol.game.ClientboundSystemChatPacket;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -77,6 +79,13 @@ public class ClientPacketListenerMixin {
 		DungeonsTerminals.onContainerSetDataPacket(packet);
 	}
 
+	@Inject(method = "handleSoundEvent", at = @At("HEAD"))
+	private void moissanite$handleSoundEvent(ClientboundSoundPacket packet, CallbackInfo ci) {
+		if (Boolean.TRUE.equals(UiDefinitions.AUTO_SWAP_ARMOR_RAG.get())) {
+			KuudraAutoSwapArmorRag.onSoundPacket(packet);
+		}
+	}
+
 	@Inject(method = "setTitleText", at = @At("TAIL"))
 	private void moissanite$handleSetTitleText(ClientboundSetTitleTextPacket packet, CallbackInfo ci) {
 		if (Boolean.TRUE.equals(UiDefinitions.AUTO_PEARL.get())) {
@@ -110,6 +119,7 @@ public class ClientPacketListenerMixin {
 				|| Boolean.TRUE.equals(UiDefinitions.AUTO_PEARL.get())
 				|| Boolean.TRUE.equals(UiDefinitions.AUTO_DIRECTION.get())
 				|| Boolean.TRUE.equals(UiDefinitions.AUTO_SHOP.get())
-				|| Boolean.TRUE.equals(UiDefinitions.AUTO_TAP.get());
+				|| Boolean.TRUE.equals(UiDefinitions.AUTO_TAP.get())
+				|| Boolean.TRUE.equals(UiDefinitions.AUTO_SWAP_ARMOR_RAG.get());
 	}
 }

@@ -50,8 +50,6 @@ public final class AutoPearl {
 	private static final double DEFAULT_ROTATION_MULTIPLIER = 0.4D;
 	private static final double ROTATION_MULTIPLIER_MIN = 0.0D;
 	private static final double ROTATION_MULTIPLIER_MAX = 2.0D;
-	private static final double ROTATION_FINISH_YAW = 1.2D;
-	private static final double ROTATION_FINISH_PITCH = 1.2D;
 	private static final double INACCURACY_MIN = 0.0D;
 	private static final double INACCURACY_MAX = 1.0D;
 	private static final double MAX_INACCURACY_YAW_DEGREES = 4.0D;
@@ -937,15 +935,14 @@ public final class AutoPearl {
 					currentPlan.pitch() + randomInaccuracyOffset(inaccuracy, MAX_INACCURACY_PITCH_DEGREES),
 					-90.0D,
 					90.0D);
-			boolean exactFinish = inaccuracy <= 0.0D;
 			sendDebug("ROTATE: aiming yaw=" + yaw + ", pitch=" + pitch + ", multiplier=" + multiplier
 					+ ", inaccuracy=" + inaccuracy + ".");
 			boolean started = RotationController.rotateYawPitch(
 					yaw,
 					pitch,
 					multiplier,
-					exactFinish ? 0.0D : ROTATION_FINISH_YAW,
-					exactFinish ? 0.0D : ROTATION_FINISH_PITCH);
+					0.0D,
+					0.0D);
 			sendDebug("ROTATE: rotateTo " + actionStatus(started) + ".");
 			if (!started) {
 				sendMessage("Failed to start rotation.");
@@ -1041,9 +1038,9 @@ public final class AutoPearl {
 				return;
 			}
 			stepStarted = true;
-			sendDebug("THROW_PEARL: right click.");
-			boolean thrown = PlayerInputActions.rightClick();
-			sendDebug("THROW_PEARL: right click " + actionStatus(thrown) + ".");
+			sendDebug("THROW_PEARL: direct use.");
+			boolean thrown = PlayerInputActions.useMainHandItemDirect();
+			sendDebug("THROW_PEARL: direct use " + actionStatus(thrown) + ".");
 			if (!thrown) {
 				sendMessage("Failed to throw pearl.");
 				resetSequence();

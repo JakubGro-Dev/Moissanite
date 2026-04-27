@@ -3,6 +3,7 @@ package com.crussion.moissanite.util.input;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
 
 public final class PlayerInputActions {
 	private static final int MIN_INPUT_HOLD_TICKS = 2;
@@ -43,6 +44,22 @@ public final class PlayerInputActions {
 		KeyMapping useKey = client.options.keyUse;
 		KeyHoldController.clickBoundKey(useKey);
 		KeyHoldController.holdBoundKey(useKey, MIN_INPUT_HOLD_TICKS);
+		return true;
+	}
+
+	public static boolean useMainHandItemDirect() {
+		Minecraft client = Minecraft.getInstance();
+		if (client == null || client.player == null || client.gameMode == null) {
+			return false;
+		}
+
+		InteractionResult result = client.gameMode.useItem(client.player, InteractionHand.MAIN_HAND);
+		if (!(result instanceof InteractionResult.Success success)) {
+			return false;
+		}
+		if (success.swingSource() == InteractionResult.SwingSource.CLIENT) {
+			client.player.swing(InteractionHand.MAIN_HAND);
+		}
 		return true;
 	}
 

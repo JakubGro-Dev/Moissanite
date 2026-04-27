@@ -37,8 +37,7 @@
 		"SpooferLanguageAccessor",
 		"SpooferLanguageManagerAccessor",
 		"BossHealthOverlayMixin",
-		"CompactChatMixin",
-		"SoundManagerMixin"
+		"CompactChatMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

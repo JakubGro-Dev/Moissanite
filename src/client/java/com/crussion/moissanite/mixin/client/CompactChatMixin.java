@@ -631,6 +631,25 @@ public abstract class CompactChatMixin {
 	}
 
 	@Unique
+	private void moissanite$refreshTrimmedMessagesPreservingAnimatedScroll() {
+		int previousScroll = chatScrollbarPos;
+		boolean previousNewMessageSinceScroll = newMessageSinceScroll;
+		if (previousScroll > 0) {
+			chatScrollbarPos = 0;
+		}
+
+		refreshTrimmedMessages();
+
+		if (previousScroll <= 0) {
+			return;
+		}
+
+		int maxScroll = Math.max(0, trimmedMessages.size() - getLinesPerPage());
+		chatScrollbarPos = Math.min(previousScroll, maxScroll);
+		newMessageSinceScroll = previousNewMessageSinceScroll && chatScrollbarPos > 0;
+	}
+
+	@Unique
 	private void moissanite$refreshAnimatedFeatureChatMessages() {
 		long nowMs = System.currentTimeMillis();
 		long animationFrame = nowMs / MOISSANITE_PREFIX_REFRESH_FRAME_MS;
@@ -653,6 +672,6 @@ public abstract class CompactChatMixin {
 			}
 		}
 
-		refreshTrimmedMessages();
+		moissanite$refreshTrimmedMessagesPreservingAnimatedScroll();
 	}
 }

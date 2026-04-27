@@ -13,7 +13,7 @@ import net.minecraft.util.Mth;
 public final class KuudraAutoTap {
 	private static final String KUUDRA_HOLLOW = "Kuudra's Hollow";
 	private static final String EATEN_TRIGGER = "[NPC] Elle: Phew! The Ballista is finally ready! It should be strong enough to tank Kuudra's blows now!";
-	private static final String COMMAND_PREFIX = "getfromsack toxic_arrow_poison ";
+	private static final String COMMAND_PREFIX = "getfromsacks toxic_arrow_poison ";
 	private static final int DELAY_TICKS = 10;
 	private static final int DEFAULT_AMOUNT = 16;
 	private static final int MIN_AMOUNT = 1;

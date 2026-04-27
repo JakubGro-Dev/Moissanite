@@ -522,14 +522,12 @@ public final class UiDefinitions {
 	public static final UiSwitch AUTO_PEARL_DEBUG = DEBUG_SECTION.toggle("Auto Pearl", false);
 	public static final UiSwitch AUTO_REND_DEBUG = DEBUG_SECTION.toggle("Auto Rend", false);
 	public static final UiSwitch ENCHANTING_MACRO_DEBUG = DEBUG_SECTION.toggle("Enchanting Macro", false);
-	public static final UiSwitch TRACK_SOUNDS_DEBUG = DEBUG_SECTION.toggle("Track Sounds", false);
 
 	// Visibilities
 	static {
 		AUTO_PEARL_DEBUG.visibleWhen(DEBUG);
 		AUTO_REND_DEBUG.visibleWhen(DEBUG);
 		ENCHANTING_MACRO_DEBUG.visibleWhen(DEBUG);
-		TRACK_SOUNDS_DEBUG.visibleWhen(DEBUG);
 	}
 
 	// Spoofer
