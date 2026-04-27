@@ -53,12 +53,13 @@ public final class AutoExperimentMacro {
 	private static final int WAIT_AFTER_CLICK_TICKS = 5;
 	private static final int WAIT_AFTER_SWAP_TICKS = 2;
 	private static final int BOTTLE_CLICK_INTERVAL_TICKS = 4;
-	private static final int SUPERPAIRS_CLICK_INTERVAL_TICKS = 24;
-	private static final int SUPERPAIRS_CLICK_DELAY_MIN_MS = 1_100;
-	private static final int SUPERPAIRS_CLICK_DELAY_MAX_MS = 1_600;
-	private static final int SUPERPAIRS_PAIR_ATTEMPTS = 3;
-	private static final int SUPERPAIRS_PAIR_CLICK_COUNT = SUPERPAIRS_PAIR_ATTEMPTS * 2;
-	private static final int SUPERPAIRS_AFTER_PAIR_EXTRA_WAIT_TICKS = 36;
+	private static final int DEFAULT_SUPERPAIRS_CLICK_DELAY_MS = 1_200;
+	private static final int DEFAULT_SUPERPAIRS_AFTER_PAIR_DELAY_MS = 3_000;
+	private static final int DEFAULT_SUPERPAIRS_PAIR_CLAIMS = 3;
+	private static final int MIN_SUPERPAIRS_DELAY_MS = 0;
+	private static final int MAX_SUPERPAIRS_DELAY_MS = 10_000;
+	private static final int MIN_SUPERPAIRS_PAIR_CLAIMS = 1;
+	private static final int MAX_SUPERPAIRS_PAIR_CLAIMS = 20;
 	private static final double SUPERPAIRS_XP_FALLBACK_UNCOVERED_RATIO = 0.90D;
 	private static final int RENEW_EXPERIMENTS_LEVEL_COST = 50;
 	private static final int TITANIC_LEVEL_THRESHOLD = 110;
@@ -240,7 +241,7 @@ public final class AutoExperimentMacro {
 	private static SuperpairsPair activeSuperpairsPair;
 	private static int activeSuperpairsPairClicksRemaining;
 	private static boolean activeSuperpairsClickFirstNext;
-	private static int lastSuperpairsClickTick = -SUPERPAIRS_CLICK_INTERVAL_TICKS;
+	private static int lastSuperpairsClickTick = -ticksForDelayMs(DEFAULT_SUPERPAIRS_CLICK_DELAY_MS);
 
 	private AutoExperimentMacro() {
 	}
@@ -716,7 +717,7 @@ public final class AutoExperimentMacro {
 			int claimSlot = findClaimSlot(menu);
 			if (claimSlot != -1 && canClickSuperpairs()) {
 				if (clickSuperpairsSlot(client, menu, claimSlot)) {
-					lastSuperpairsClickTick = stepElapsedTicks;
+					lastSuperpairsClickTick = macroElapsedTicks;
 					enterStep(MacroStep.WAIT_AFTER_SUPERPAIRS_CLAIM);
 				}
 			}
@@ -753,7 +754,7 @@ public final class AutoExperimentMacro {
 		int revealSlot = findNextSuperpairsRevealSlot(menu);
 		if (revealSlot != -1 && canClickSuperpairs()) {
 			if (clickSuperpairsSlot(client, menu, revealSlot)) {
-				lastSuperpairsClickTick = stepElapsedTicks;
+				lastSuperpairsClickTick = macroElapsedTicks;
 				superpairsClickedRevealSlots.add(revealSlot);
 			}
 			return;
@@ -762,7 +763,7 @@ public final class AutoExperimentMacro {
 		int fillerSlot = findAnySuperpairsClickableSlot(menu);
 		if (fillerSlot != -1 && canClickSuperpairs()) {
 			if (clickSuperpairsSlot(client, menu, fillerSlot)) {
-				lastSuperpairsClickTick = stepElapsedTicks;
+				lastSuperpairsClickTick = macroElapsedTicks;
 			}
 		}
 	}
@@ -784,7 +785,7 @@ public final class AutoExperimentMacro {
 		int claimSlot = findClaimSlot(menu);
 		if (claimSlot != -1 && canClickSuperpairs()) {
 			if (clickSuperpairsSlot(client, menu, claimSlot)) {
-				lastSuperpairsClickTick = stepElapsedTicks;
+				lastSuperpairsClickTick = macroElapsedTicks;
 			}
 			return;
 		}
@@ -846,12 +847,13 @@ public final class AutoExperimentMacro {
 
 	private static void startSuperpairsPair(SuperpairsPair pair) {
 		activeSuperpairsPair = pair;
-		activeSuperpairsPairClicksRemaining = SUPERPAIRS_PAIR_CLICK_COUNT;
+		int pairClaims = configuredSuperpairsPairClaims();
+		activeSuperpairsPairClicksRemaining = pairClaims * 2;
 		activeSuperpairsClickFirstNext = true;
 		if (pair.xpValue() > 0) {
-			sendMessage("Matching enchanting XP pair " + pair.reward() + " three times.");
+			sendMessage("Matching enchanting XP pair " + pair.reward() + " " + formatPairClaimCount(pairClaims) + ".");
 		} else {
-			sendMessage("Matching priority reward " + pair.reward() + " three times.");
+			sendMessage("Matching priority reward " + pair.reward() + " " + formatPairClaimCount(pairClaims) + ".");
 		}
 	}
 
@@ -867,8 +869,8 @@ public final class AutoExperimentMacro {
 		}
 
 		lastSuperpairsClickTick = clickedSecondSlot
-				? stepElapsedTicks + SUPERPAIRS_AFTER_PAIR_EXTRA_WAIT_TICKS
-				: stepElapsedTicks;
+				? macroElapsedTicks + configuredSuperpairsAfterPairDelayTicks() - configuredSuperpairsClickDelayTicks()
+				: macroElapsedTicks;
 		activeSuperpairsClickFirstNext = !activeSuperpairsClickFirstNext;
 		activeSuperpairsPairClicksRemaining--;
 		if (activeSuperpairsPairClicksRemaining <= 0) {
@@ -1096,7 +1098,7 @@ public final class AutoExperimentMacro {
 	}
 
 	private static boolean canClickSuperpairs() {
-		return stepElapsedTicks - lastSuperpairsClickTick >= SUPERPAIRS_CLICK_INTERVAL_TICKS;
+		return macroElapsedTicks - lastSuperpairsClickTick >= configuredSuperpairsClickDelayTicks();
 	}
 
 	private static void handleRotateForBottles() {
@@ -2023,12 +2025,13 @@ public final class AutoExperimentMacro {
 	}
 
 	private static boolean clickSuperpairsSlot(Minecraft client, ChestMenu menu, int slot) {
+		int clickDelayMs = configuredSuperpairsClickDelayMs();
 		return GuiClickThrottle.clickSlot(
 				client,
 				menu,
 				slot,
-				SUPERPAIRS_CLICK_DELAY_MIN_MS,
-				SUPERPAIRS_CLICK_DELAY_MAX_MS);
+				clickDelayMs,
+				clickDelayMs);
 	}
 
 	private static boolean canClickOnInterval() {
@@ -2056,6 +2059,36 @@ public final class AutoExperimentMacro {
 		Integer value = UiDefinitions.AUTO_EXPERIMENTS_ENCHANTING_LEVEL.get();
 		int configured = value == null ? 60 : value;
 		return Mth.clamp(configured, 1, 60);
+	}
+
+	private static int configuredSuperpairsClickDelayMs() {
+		Integer value = UiDefinitions.AUTO_EXPERIMENTS_SUPERPAIRS_CLICK_DELAY.get();
+		int configured = value == null ? DEFAULT_SUPERPAIRS_CLICK_DELAY_MS : value;
+		return Mth.clamp(configured, MIN_SUPERPAIRS_DELAY_MS, MAX_SUPERPAIRS_DELAY_MS);
+	}
+
+	private static int configuredSuperpairsClickDelayTicks() {
+		return ticksForDelayMs(configuredSuperpairsClickDelayMs());
+	}
+
+	private static int configuredSuperpairsAfterPairDelayTicks() {
+		Integer value = UiDefinitions.AUTO_EXPERIMENTS_SUPERPAIRS_AFTER_PAIR_DELAY.get();
+		int configured = value == null ? DEFAULT_SUPERPAIRS_AFTER_PAIR_DELAY_MS : value;
+		return ticksForDelayMs(Mth.clamp(configured, MIN_SUPERPAIRS_DELAY_MS, MAX_SUPERPAIRS_DELAY_MS));
+	}
+
+	private static int configuredSuperpairsPairClaims() {
+		Integer value = UiDefinitions.AUTO_EXPERIMENTS_SUPERPAIRS_PAIR_CLAIMS.get();
+		int configured = value == null ? DEFAULT_SUPERPAIRS_PAIR_CLAIMS : value;
+		return Mth.clamp(configured, MIN_SUPERPAIRS_PAIR_CLAIMS, MAX_SUPERPAIRS_PAIR_CLAIMS);
+	}
+
+	private static int ticksForDelayMs(int delayMs) {
+		return Math.max(0, (int) Math.ceil(delayMs / 50.0D));
+	}
+
+	private static String formatPairClaimCount(int pairClaims) {
+		return pairClaims == 1 ? "once" : pairClaims + " times";
 	}
 
 	private static int superpairsEnchantingRequirement(ExperimentTier tier) {
@@ -2149,7 +2182,7 @@ public final class AutoExperimentMacro {
 		activeSuperpairsPair = null;
 		activeSuperpairsPairClicksRemaining = 0;
 		activeSuperpairsClickFirstNext = true;
-		lastSuperpairsClickTick = -SUPERPAIRS_CLICK_INTERVAL_TICKS;
+		lastSuperpairsClickTick = -configuredSuperpairsClickDelayTicks();
 	}
 
 	private static String formatVec(Vec3 vec) {
