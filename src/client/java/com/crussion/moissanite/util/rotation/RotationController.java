@@ -175,6 +175,8 @@ public final class RotationController {
 		float effectiveDt = dtSeconds / rotateTaskMultiplier;
 		float yawError = Mth.wrapDegrees(targetYaw - client.player.getYRot());
 		float pitchError = Mth.wrapDegrees(targetPitch - client.player.getXRot());
+		boolean exactYawFinish = rotateFinishYaw <= 0.0f;
+		boolean exactPitchFinish = rotateFinishPitch <= 0.0f;
 
 		float yawGraph = smoothGraph(Math.abs(yawError), 110.0f);
 		float pitchGraph = smoothGraph(Math.abs(pitchError), 85.0f);
@@ -191,7 +193,7 @@ public final class RotationController {
 		if (Math.abs(yawError) < YAW_DEADZONE && Math.abs(yawVelocity) < 1.3f) {
 			yawVelocity = 0.0f;
 			yawCarry = 0.0f;
-			client.player.setYRot(client.player.getYRot() + (yawError * 0.40f));
+			client.player.setYRot(exactYawFinish ? targetYaw : client.player.getYRot() + (yawError * 0.40f));
 		} else {
 			client.player.setYRot(client.player.getYRot() + yawStep);
 		}
@@ -199,7 +201,7 @@ public final class RotationController {
 		if (Math.abs(pitchError) < PITCH_DEADZONE && Math.abs(pitchVelocity) < 1.0f) {
 			pitchVelocity = 0.0f;
 			pitchCarry = 0.0f;
-			client.player.setXRot(client.player.getXRot() + (pitchError * 0.40f));
+			client.player.setXRot(exactPitchFinish ? targetPitch : client.player.getXRot() + (pitchError * 0.40f));
 		} else {
 			client.player.setXRot(client.player.getXRot() + pitchStep);
 		}
@@ -306,7 +308,7 @@ public final class RotationController {
 		if (!Double.isFinite(tolerance)) {
 			return fallback;
 		}
-		return (float) Mth.clamp(tolerance, 0.1, 10.0);
+		return (float) Mth.clamp(tolerance, 0.0, 10.0);
 	}
 
 	private static void resetRotationController() {

@@ -18,6 +18,7 @@
 		"ItemInHandRendererMixin",
 		"LivingEntitySwingMixin",
 		"LocalPlayerSwingMixin",
+		"MinecraftImGuiMixin",
 		"MinecraftScreenChangeMixin",
 		"MouseHandlerZoomMixin",
 		"NoDebuffMixin",
@@ -36,7 +37,8 @@
 		"SpooferLanguageAccessor",
 		"SpooferLanguageManagerAccessor",
 		"BossHealthOverlayMixin",
-		"CompactChatMixin"
+		"CompactChatMixin",
+		"SoundManagerMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

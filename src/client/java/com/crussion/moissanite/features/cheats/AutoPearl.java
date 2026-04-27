@@ -60,7 +60,8 @@ public final class AutoPearl {
 	private static final int ROTATE_TIMEOUT_TICKS = 120;
 	private static final int SEQUENCE_TIMEOUT_TICKS = 200;
 	private static final long SEQUENCE_START_LEAD_MS = 1500L;
-	private static final double FLAT_BLOCK_CHECK_DISTANCE = 7.0D;
+	private static final double THROW_PATH_CHECK_DISTANCE = 7.0D;
+	private static final double THROW_PATH_PROBE_RADIUS = 0.125D;
 	private static final double TRAJECTORY_EPSILON = 1.0E-6D;
 	private static final int TALISMAN_TIER_MIN = 0;
 	private static final int TALISMAN_TIER_MAX = 3;
@@ -706,29 +707,27 @@ public final class AutoPearl {
 	}
 
 	private static TimedThrowPlan selectPreferredPlan(Minecraft client, TimedThrowPlan skyPlan, TimedThrowPlan flatPlan) {
-		if (flatPlan != null && !isFlatPathBlocked(client, flatPlan.plan())) {
+		if (flatPlan != null && !isThrowPathBlocked(client, flatPlan.plan())) {
 			return flatPlan;
 		}
-		if (skyPlan != null) {
+		if (skyPlan != null && !isThrowPathBlocked(client, skyPlan.plan())) {
 			return skyPlan;
 		}
-		return flatPlan;
+		return null;
 	}
 
-	private static boolean isFlatPathBlocked(Minecraft client, ThrowPlan plan) {
-		if (client == null || client.level == null || client.player == null || plan == null || plan.sky()) {
-			return false;
+	private static boolean isThrowPathBlocked(Minecraft client, ThrowPlan plan) {
+		if (client == null || client.level == null || client.player == null || plan == null) {
+			return true;
 		}
 
-		Vec3 pearlStart = getPearlSpawnPos(client);
-		if (pearlStart == null) {
-			return false;
+		Vec3 position = getPearlSpawnPos(client);
+		if (position == null) {
+			return true;
 		}
 
-		Vec3 position = pearlStart;
 		Vec3 velocity = initialPearlVelocity(plan);
-		double remainingDistance = FLAT_BLOCK_CHECK_DISTANCE;
-
+		double remainingDistance = THROW_PATH_CHECK_DISTANCE;
 		for (int tick = 0; tick < TrajectorySolver.MAX_SIM_TICKS && remainingDistance > TRAJECTORY_EPSILON; tick++) {
 			double segmentLength = velocity.length();
 			if (segmentLength <= TRAJECTORY_EPSILON) {
@@ -737,24 +736,43 @@ public final class AutoPearl {
 
 			double distanceToCheck = Math.min(segmentLength, remainingDistance);
 			Vec3 segmentEnd = position.add(velocity.scale(distanceToCheck / segmentLength));
-			HitResult hitResult = client.level.clip(new ClipContext(
-					position,
-					segmentEnd,
-					ClipContext.Block.COLLIDER,
-					ClipContext.Fluid.NONE,
-					client.player));
-			if (hitResult.getType() == HitResult.Type.BLOCK) {
+			if (probeSegmentBlocked(client, position, segmentEnd)) {
 				return true;
 			}
 
 			remainingDistance -= distanceToCheck;
-			position = position.add(velocity);
+			position = segmentEnd;
 			velocity = new Vec3(
 					velocity.x * TrajectorySolver.DRAG,
 					(velocity.y * TrajectorySolver.DRAG) - TrajectorySolver.GRAVITY,
 					velocity.z * TrajectorySolver.DRAG);
 		}
 		return false;
+	}
+
+	private static boolean probeSegmentBlocked(Minecraft client, Vec3 start, Vec3 end) {
+		if (segmentHitBlock(client, start, end)) {
+			return true;
+		}
+		Vec3 xOffset = new Vec3(THROW_PATH_PROBE_RADIUS, 0.0D, 0.0D);
+		Vec3 yOffset = new Vec3(0.0D, THROW_PATH_PROBE_RADIUS, 0.0D);
+		Vec3 zOffset = new Vec3(0.0D, 0.0D, THROW_PATH_PROBE_RADIUS);
+		return segmentHitBlock(client, start.add(xOffset), end.add(xOffset))
+				|| segmentHitBlock(client, start.subtract(xOffset), end.subtract(xOffset))
+				|| segmentHitBlock(client, start.add(yOffset), end.add(yOffset))
+				|| segmentHitBlock(client, start.subtract(yOffset), end.subtract(yOffset))
+				|| segmentHitBlock(client, start.add(zOffset), end.add(zOffset))
+				|| segmentHitBlock(client, start.subtract(zOffset), end.subtract(zOffset));
+	}
+
+	private static boolean segmentHitBlock(Minecraft client, Vec3 start, Vec3 end) {
+		HitResult hitResult = client.level.clip(new ClipContext(
+				start,
+				end,
+				ClipContext.Block.COLLIDER,
+				ClipContext.Fluid.NONE,
+				client.player));
+		return hitResult.getType() == HitResult.Type.BLOCK;
 	}
 
 	private static Vec3 initialPearlVelocity(ThrowPlan plan) {
@@ -919,14 +937,15 @@ public final class AutoPearl {
 					currentPlan.pitch() + randomInaccuracyOffset(inaccuracy, MAX_INACCURACY_PITCH_DEGREES),
 					-90.0D,
 					90.0D);
+			boolean exactFinish = inaccuracy <= 0.0D;
 			sendDebug("ROTATE: aiming yaw=" + yaw + ", pitch=" + pitch + ", multiplier=" + multiplier
 					+ ", inaccuracy=" + inaccuracy + ".");
 			boolean started = RotationController.rotateYawPitch(
 					yaw,
 					pitch,
 					multiplier,
-					ROTATION_FINISH_YAW,
-					ROTATION_FINISH_PITCH);
+					exactFinish ? 0.0D : ROTATION_FINISH_YAW,
+					exactFinish ? 0.0D : ROTATION_FINISH_PITCH);
 			sendDebug("ROTATE: rotateTo " + actionStatus(started) + ".");
 			if (!started) {
 				sendMessage("Failed to start rotation.");
@@ -1010,7 +1029,17 @@ public final class AutoPearl {
 	}
 
 	private static void handleThrowPearl() {
+		if (currentPlan == null) {
+			resetSequence();
+			return;
+		}
 		if (!stepStarted) {
+			Minecraft client = Minecraft.getInstance();
+			if (isThrowPathBlocked(client, currentPlan)) {
+				sendDebug("THROW_PEARL: blocked path, cancelling sequence.");
+				resetSequence();
+				return;
+			}
 			stepStarted = true;
 			sendDebug("THROW_PEARL: right click.");
 			boolean thrown = PlayerInputActions.rightClick();

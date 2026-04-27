@@ -13,7 +13,6 @@ import com.crussion.moissanite.features.cheats.AutoExperimentMacro;
 import com.crussion.moissanite.features.cheats.AutoDirection;
 import com.crussion.moissanite.features.cheats.AutoPearl;
 import com.crussion.moissanite.features.cheats.AutoPearlRefill;
-import com.crussion.moissanite.features.cheats.AutoRend;
 import com.crussion.moissanite.features.cheats.AutoRend_Reworked;
 import com.crussion.moissanite.features.cheats.KuudraPosTracker;
 import com.crussion.moissanite.features.cheats.WardrobeKeybinds;
@@ -33,6 +32,8 @@ import com.crussion.moissanite.features.kuudra.KuudraSplits;
 import com.crussion.moissanite.features.kuudra.KuudraBossHp;
 import com.crussion.moissanite.features.kuudra.KuudraCubeHpTag;
 import com.crussion.moissanite.features.kuudra.KuudraSupplyWaypoints;
+import com.crussion.moissanite.features.kuudra.KuudraAutoShop;
+import com.crussion.moissanite.features.kuudra.KuudraAutoTap;
 import com.crussion.moissanite.update.ModUpdater;
 
 public class MoissaniteClient implements ClientModInitializer {
@@ -55,7 +56,6 @@ public class MoissaniteClient implements ClientModInitializer {
 		AutoDirection.init();
 		AutoPearl.init();
 		AutoPearlRefill.init();
-		AutoRend.init();
 		KuudraPhaseTracker.init();
 		KuudraPosTracker.init();
 		KuudraEsp.init();
@@ -65,6 +65,8 @@ public class MoissaniteClient implements ClientModInitializer {
 		KuudraBossHp.init();
 		KuudraCubeHpTag.init();
 		KuudraSupplyWaypoints.init();
+		KuudraAutoShop.init();
+		KuudraAutoTap.init();
 		AutoRend_Reworked.init();
 		AlwaysSprint.init();
 		RenderImageOnScreen.init();

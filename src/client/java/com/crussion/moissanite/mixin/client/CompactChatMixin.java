@@ -2,11 +2,14 @@ package com.crussion.moissanite.mixin.client;
 
 import com.crussion.moissanite.definitions.UiDefinitions;
 import com.crussion.moissanite.util.chat.CompactChatState;
+import com.crussion.moissanite.util.chat.FeatureChat;
 import com.crussion.moissanite.util.text.TextNormalizer;
 
 import net.minecraft.client.GuiMessage;
 import net.minecraft.client.GuiMessageTag;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MessageSignature;
@@ -60,6 +63,9 @@ public abstract class CompactChatMixin {
 	private static final long MOISSANITE_COMPACTION_UPDATE_INTERVAL_MS = 500L;
 
 	@Unique
+	private static final long MOISSANITE_PREFIX_REFRESH_FRAME_MS = 16L;
+
+	@Unique
 	private final ExecutorService moissanite$compactionExecutor = Executors.newSingleThreadExecutor(runnable -> {
 		Thread thread = new Thread(runnable, "Moissanite-ChatCompactor");
 		thread.setDaemon(true);
@@ -97,17 +103,25 @@ public abstract class CompactChatMixin {
 
 	@Inject(method = "tick", at = @At("HEAD"))
 	private void moissanite$onTick(CallbackInfo ci) {
-		long requestedGeneration;
+		long requestedGeneration = -1L;
 		synchronized (moissanite$trackedLock) {
 			moissanite$queueDueDirtyCompactions(System.currentTimeMillis());
-			if (!moissanite$flushRequested) {
-				return;
+			if (moissanite$flushRequested) {
+				requestedGeneration = moissanite$flushRequestedGeneration;
+				moissanite$flushRequested = false;
+				moissanite$flushRequestedGeneration = -1L;
 			}
-			requestedGeneration = moissanite$flushRequestedGeneration;
-			moissanite$flushRequested = false;
-			moissanite$flushRequestedGeneration = -1L;
 		}
-		moissanite$flushPendingCompactions(requestedGeneration);
+		if (requestedGeneration != -1L) {
+			moissanite$flushPendingCompactions(requestedGeneration);
+		}
+		moissanite$refreshAnimatedFeatureChatMessages();
+	}
+
+	@Inject(method = "render(Lnet/minecraft/client/gui/GuiGraphics;Lnet/minecraft/client/gui/Font;IIIZZ)V", at = @At("HEAD"))
+	private void moissanite$onRenderChat(GuiGraphics guiGraphics, Font font, int ticks, int mouseX, int mouseY,
+			boolean focused, boolean canChangeCursor, CallbackInfo ci) {
+		moissanite$refreshAnimatedFeatureChatMessages();
 	}
 
 	@Unique
@@ -118,6 +132,9 @@ public abstract class CompactChatMixin {
 
 	@Unique
 	private boolean moissanite$bypassPipeline;
+
+	@Unique
+	private long moissanite$lastAnimatedPrefixFrame = Long.MIN_VALUE;
 
 	@Inject(method = "addMessage(Lnet/minecraft/network/chat/Component;Lnet/minecraft/network/chat/MessageSignature;Lnet/minecraft/client/GuiMessageTag;)V", at = @At("HEAD"), cancellable = true)
 	private void moissanite$onAddMessage(Component component, MessageSignature messageSignature,
@@ -611,5 +628,31 @@ public abstract class CompactChatMixin {
 		moissanite$flushScheduled = false;
 		moissanite$flushRequested = false;
 		moissanite$flushRequestedGeneration = -1L;
+	}
+
+	@Unique
+	private void moissanite$refreshAnimatedFeatureChatMessages() {
+		long nowMs = System.currentTimeMillis();
+		long animationFrame = nowMs / MOISSANITE_PREFIX_REFRESH_FRAME_MS;
+		if (animationFrame == moissanite$lastAnimatedPrefixFrame) {
+			return;
+		}
+		moissanite$lastAnimatedPrefixFrame = animationFrame;
+
+		Map<GuiMessage, GuiMessage> replacements = FeatureChat.refreshAnimatedMessages(allMessages, nowMs);
+		if (replacements.isEmpty()) {
+			return;
+		}
+
+		synchronized (moissanite$trackedLock) {
+			for (CompactChatState.TrackedMessage trackedMessage : moissanite$trackedMessages.values()) {
+				GuiMessage replacement = replacements.get(trackedMessage.displayedMessage);
+				if (replacement != null) {
+					trackedMessage.displayedMessage = replacement;
+				}
+			}
+		}
+
+		refreshTrimmedMessages();
 	}
 }

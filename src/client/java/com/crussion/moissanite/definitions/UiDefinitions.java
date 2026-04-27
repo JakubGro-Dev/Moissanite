@@ -1,7 +1,6 @@
 package com.crussion.moissanite.definitions;
 
 import com.crussion.moissanite.features.cheats.AutoPearl;
-import com.crussion.moissanite.features.cheats.AutoRend;
 import com.crussion.moissanite.features.cheats.AutoRend_Reworked;
 import com.crussion.moissanite.features.cheats.AutoExperimentMacro;
 import com.crussion.moissanite.features.cheats.KuudraPosTracker;
@@ -414,7 +413,6 @@ public final class UiDefinitions {
 	public static final UiSwitch AUTO_DIRECTION_AUTO_HYPERION = KUUDRA_CHEATS.toggle("Auto Hyperion", false);
 	public static final UiSwitch AUTO_DIRECTION_AUTO_REAPER = KUUDRA_CHEATS.toggle("Auto Reaper", false);
 	public static final UiSwitch AUTO_PEARL = KUUDRA_CHEATS.toggle("Auto Pearl", false);
-	public static final UiSwitch AUTO_PEARL_DEBUG = KUUDRA_CHEATS.toggle("Auto Pearl Debug", false);
 	public static final UiKeybind AUTO_PEARL_KEYBIND = KUUDRA_CHEATS.keybind("Toggle Auto Pearl",
 			InputConstants.UNKNOWN.getValue());
 	public static final UiSlider AUTO_PEARL_TALISMAN_TIER = KUUDRA_CHEATS.slider("Auto Pearl Talisman Tier", 0.0, 3.0,
@@ -429,18 +427,17 @@ public final class UiDefinitions {
 	public static final UiSlider AUTO_PEARL_Y = KUUDRA_CHEATS.slider("Auto Pearl Y", -10000.0, 10000.0, 6.0, 1.0);
 	public static final UiButton AUTO_PEARL_MOVE = KUUDRA_CHEATS.button("Auto Pearl Move", "Move",
 			button -> AutoPearl.openMoveScreen());
+	public static final UiSwitch AUTO_SHOP = KUUDRA_CHEATS.toggle("Auto Shop", false);
+	public static final UiSlider AUTO_SHOP_FIRST_CLICK_DELAY = KUUDRA_CHEATS.slider("Auto Shop First Click Delay", 1.0, 1500.0, 850.0, 1.0);
+	public static final UiSlider AUTO_SHOP_CLICK_DELAY = KUUDRA_CHEATS.slider("Auto Shop Click Delay", 1.0, 1000.0, 250.0, 1.0);
+	public static final UiSwitch AUTO_TAP = KUUDRA_CHEATS.toggle("Auto Tap", false);
+	public static final UiSlider AUTO_TAP_AMOUNT = KUUDRA_CHEATS.slider("Auto Tap Amount", 1.0, 64.0, 32.0, 1.0);
 	public static final UiSwitch AUTO_PEARL_REFILL = KUUDRA_CHEATS.toggle("Auto Pearl Refill Kuudra", false);
 	public static final UiSlider AUTO_PEARL_REFILL_EVERY_TICKS = KUUDRA_CHEATS.slider("Auto Pearl Refill Every X Ticks",
-			1.0, 120.0, 20.0, 1.0);
+			1.0, 20.0, 5.0, 1.0);
 	public static final UiSwitch AUTO_REND = KUUDRA_CHEATS.toggle("Auto Rend", false);
-	public static final UiSwitch AUTO_REND_HARDCODE = KUUDRA_CHEATS.toggle("Auto Rend Hardcode", true);
-	public static final UiSwitch AUTO_REND_DEBUG = KUUDRA_CHEATS.toggle("Auto Rend Debug", false);
 	public static final UiSwitch AUTO_REND_AUTO_BACK_PEARL = KUUDRA_CHEATS.toggle("Auto Back Pearl", true);
 	public static final UiSwitch AUTO_REND_TERMINATOR_PULL = KUUDRA_CHEATS.toggle("Terminator Pull", false);
-	public static final UiKeybind AUTO_REND_TRIGGER_KEYBIND = KUUDRA_CHEATS.keybind("Trigger Auto Rend DEBUG",
-			InputConstants.UNKNOWN.getValue());
-	public static final UiKeybind AUTO_REND_OLD_TRIGGER_KEYBIND = KUUDRA_CHEATS.keybind("Trigger Auto Rend OLD DEBUG",
-			InputConstants.UNKNOWN.getValue());
 	public static final UiSlider AUTO_REND_ROTATION_MULTIPLIER = KUUDRA_CHEATS.slider("Rotation Multiplier", 0.1, 2.0,
 			1.0, 0.1);
 	public static final UiSlider AUTO_REND_HYPERION = KUUDRA_CHEATS.slider("Hyperion", -1.0, 9.0, -1.0, 1.0);
@@ -449,15 +446,13 @@ public final class UiDefinitions {
 	public static final UiSlider AUTO_REND_ATOMSPLIT = KUUDRA_CHEATS.slider("Atomsplit", -1.0, 9.0, -1.0, 1.0);
 	public static final UiSlider AUTO_REND_ENDSTONE = KUUDRA_CHEATS.slider("Endstone", -1.0, 9.0, -1.0, 1.0);
 	public static final UiSlider AUTO_REND_PEARLS = KUUDRA_CHEATS.slider("Pearls", -1.0, 9.0, -1.0, 1.0);
-	public static final UiSlider AUTO_REND_SWAP_ARMOR = KUUDRA_CHEATS.slider("Swap Armor", -1.0, 9.0, -1.0, 1.0);
+	public static final UiSlider AUTO_REND_SWAP_ARMOR = KUUDRA_CHEATS.slider("Swap Armor", -1.0, 8.0, -1.0, 1.0);
 	public static final UiButton AUTO_REND_SCAN_ITEMS = KUUDRA_CHEATS.button("Scan Items", "Scan Items",
-			button -> {
-				if (Boolean.TRUE.equals(AUTO_REND_HARDCODE.get())) {
-					AutoRend.scanItemSlots();
-				} else {
-					AutoRend_Reworked.scanItemSlots();
-				}
-			});
+			button -> AutoRend_Reworked.scanItemSlots());
+	public static final UiSwitch AUTO_SWAP_ARMOR_RAG = KUUDRA_CHEATS.toggle("Auto Swap Armor After Rag", false);
+	public static final UiSlider AUTO_SWAP_ARMOR_RAG_SLOT = KUUDRA_CHEATS.slider("Armor Slot", -1.0, 8.0, -1.0, 1.0);
+			
+
 
 	public static final UiSwitch NO_PRE = KUUDRA_NORMAL.toggle("No Pre", false);
 	public static final UiSwitch REND_DAMAGE = KUUDRA_NORMAL.toggle("Rend Damage", false);
@@ -481,8 +476,6 @@ public final class UiDefinitions {
 		AUTO_EXPERIMENTS_MACRO_STOP.visibleWhen(AutoExperimentMacro::isRunning);
 		AUTO_DIRECTION_AUTO_HYPERION.visibleWhen(AUTO_DIRECTION);
 		AUTO_DIRECTION_AUTO_REAPER.visibleWhen(AUTO_DIRECTION);
-		AUTO_REND_HARDCODE.visibleWhen(AUTO_REND);
-		AUTO_REND_DEBUG.visibleWhen(AUTO_REND);
 		AUTO_REND_AUTO_BACK_PEARL.visibleWhen(AUTO_REND);
 		AUTO_REND_TERMINATOR_PULL.visibleWhen(AUTO_REND);
 		AUTO_PEARL_TALISMAN_TIER.visibleWhen(AUTO_PEARL);
@@ -493,10 +486,9 @@ public final class UiDefinitions {
 		AUTO_PEARL_Y.visibleWhen(() -> false);
 		AUTO_PEARL_MOVE.visibleWhen(AUTO_PEARL);
 		AUTO_PEARL_REFILL_EVERY_TICKS.visibleWhen(AUTO_PEARL_REFILL);
-		AUTO_REND_TRIGGER_KEYBIND.visibleWhen(
-				() -> Boolean.TRUE.equals(AUTO_REND.get()) && Boolean.TRUE.equals(AUTO_REND_DEBUG.get()));
-		AUTO_REND_OLD_TRIGGER_KEYBIND.visibleWhen(
-				() -> Boolean.TRUE.equals(AUTO_REND.get()) && Boolean.TRUE.equals(AUTO_REND_DEBUG.get()));
+		AUTO_SHOP_FIRST_CLICK_DELAY.visibleWhen(AUTO_SHOP);
+		AUTO_SHOP_CLICK_DELAY.visibleWhen(AUTO_SHOP);
+		AUTO_TAP_AMOUNT.visibleWhen(AUTO_TAP);
 		AUTO_REND_ROTATION_MULTIPLIER.visibleWhen(AUTO_REND);
 		AUTO_REND_HYPERION.visibleWhen(AUTO_REND);
 		AUTO_REND_BONEMERANG.visibleWhen(AUTO_REND);
@@ -507,6 +499,7 @@ public final class UiDefinitions {
 		AUTO_REND_PEARLS.visibleWhen(AUTO_REND);
 		AUTO_REND_SWAP_ARMOR.visibleWhen(AUTO_REND);
 		AUTO_REND_SCAN_ITEMS.visibleWhen(AUTO_REND);
+		AUTO_SWAP_ARMOR_RAG_SLOT.visibleWhen(AUTO_SWAP_ARMOR_RAG);
 		REND_DAMAGE_AUTO_REND_SCREEN.visibleWhen(REND_DAMAGE);
 	}
 
@@ -514,6 +507,7 @@ public final class UiDefinitions {
 
 	// Sections
 	public static final UiSection UPDATE_SECTION = UISETTINGS.section("Update");
+	public static final UiSection DEBUG_SECTION = UISETTINGS.section("Debug");
 
 	// Bindables
 	public static final UiSwitch UPDATE_AUTO_CHECK_ON_JOIN = UPDATE_SECTION.toggle("Auto Check On Server Join", true);
@@ -523,9 +517,19 @@ public final class UiDefinitions {
 			button -> ModUpdater.downloadLatestAsync(ModUpdater.CheckTrigger.MANUAL));
 	public static final UiButton UPDATE_MANUAL = UPDATE_SECTION.button("Manual Download", "Open GitHub",
 			button -> ModUpdater.openLatestReleasePage());
+			
+	public static final UiSwitch DEBUG = DEBUG_SECTION.toggle("Debug", false);
+	public static final UiSwitch AUTO_PEARL_DEBUG = DEBUG_SECTION.toggle("Auto Pearl", false);
+	public static final UiSwitch AUTO_REND_DEBUG = DEBUG_SECTION.toggle("Auto Rend", false);
+	public static final UiSwitch ENCHANTING_MACRO_DEBUG = DEBUG_SECTION.toggle("Enchanting Macro", false);
+	public static final UiSwitch TRACK_SOUNDS_DEBUG = DEBUG_SECTION.toggle("Track Sounds", false);
 
 	// Visibilities
 	static {
+		AUTO_PEARL_DEBUG.visibleWhen(DEBUG);
+		AUTO_REND_DEBUG.visibleWhen(DEBUG);
+		ENCHANTING_MACRO_DEBUG.visibleWhen(DEBUG);
+		TRACK_SOUNDS_DEBUG.visibleWhen(DEBUG);
 	}
 
 	// Spoofer

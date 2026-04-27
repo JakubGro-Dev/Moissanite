@@ -63,6 +63,12 @@ public class ClientPacketListenerMixin {
 		if (Boolean.TRUE.equals(UiDefinitions.NO_PRE.get())) {
 			com.crussion.moissanite.features.kuudra.KuudraNoPre.onSystemChat(packet.content());
 		}
+		if (Boolean.TRUE.equals(UiDefinitions.AUTO_TAP.get())) {
+			com.crussion.moissanite.features.kuudra.KuudraAutoTap.onSystemChat(packet.content());
+		}
+		if (Boolean.TRUE.equals(UiDefinitions.AUTO_SHOP.get())) {
+			com.crussion.moissanite.features.kuudra.KuudraAutoShop.onSystemChat(packet.content());
+		}
 		DungeonsTerminals.onSystemChat(packet.content());
 	}
 
@@ -102,6 +108,8 @@ public class ClientPacketListenerMixin {
 				|| Boolean.TRUE.equals(UiDefinitions.REND_DAMAGE.get())
 				|| Boolean.TRUE.equals(UiDefinitions.AUTO_REND.get())
 				|| Boolean.TRUE.equals(UiDefinitions.AUTO_PEARL.get())
-				|| Boolean.TRUE.equals(UiDefinitions.AUTO_DIRECTION.get());
+				|| Boolean.TRUE.equals(UiDefinitions.AUTO_DIRECTION.get())
+				|| Boolean.TRUE.equals(UiDefinitions.AUTO_SHOP.get())
+				|| Boolean.TRUE.equals(UiDefinitions.AUTO_TAP.get());
 	}
 }

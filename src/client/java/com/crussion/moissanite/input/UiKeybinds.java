@@ -3,6 +3,7 @@ package com.crussion.moissanite.input;
 import org.lwjgl.glfw.GLFW;
 
 import com.crussion.moissanite.ui.UiEntrypoints;
+import com.crussion.moissanite.ui.imgui.ImGuiScreen;
 import com.crussion.moissanite.ui.navigation.ScreenIds;
 import com.crussion.moissanite.ui.screen.InventoryOverlayScreen;
 
@@ -56,7 +57,7 @@ public final class UiKeybinds {
 		if (client == null) {
 			return;
 		}
-		if (client.screen instanceof InventoryOverlayScreen) {
+		if (client.screen instanceof InventoryOverlayScreen || client.screen instanceof ImGuiScreen) {
 			client.setScreen(null);
 		} else {
 			UiEntrypoints.open(ScreenIds.INVENTORY_OVERLAY);

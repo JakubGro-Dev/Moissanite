@@ -30,10 +30,7 @@ public final class GuiClickThrottle {
 	}
 
 	public static boolean clickSlot(Minecraft client, ChestMenu menu, int slot, int minDelayMs, int maxDelayMs) {
-		if (client == null || client.player == null || client.gameMode == null || menu == null) {
-			return false;
-		}
-		if (slot < 0 || slot >= menu.slots.size()) {
+		if (!isClickable(client, menu, slot)) {
 			return false;
 		}
 
@@ -51,7 +48,15 @@ public final class GuiClickThrottle {
 		return true;
 	}
 
-	private static void clickSlotLikeUser(Minecraft client, ChestMenu menu, int slot) {
+	public static boolean clickSlotLikeUser(Minecraft client, ChestMenu menu, int slot) {
+		if (!isClickable(client, menu, slot)) {
+			return false;
+		}
+		performClickSlotLikeUser(client, menu, slot);
+		return true;
+	}
+
+	private static void performClickSlotLikeUser(Minecraft client, ChestMenu menu, int slot) {
 		if (client.screen instanceof ContainerScreen containerScreen && containerScreen.getMenu() == menu) {
 			Slot targetSlot = menu.slots.get(slot);
 			double mouseX = ((ContainerScreenAccessor) containerScreen).moissanite$getLeftPos() + targetSlot.x + 8.0D;
@@ -63,6 +68,13 @@ public final class GuiClickThrottle {
 		}
 
 		client.gameMode.handleInventoryMouseClick(menu.containerId, slot, 0, ClickType.PICKUP, client.player);
+	}
+
+	private static boolean isClickable(Minecraft client, ChestMenu menu, int slot) {
+		if (client == null || client.player == null || client.gameMode == null || menu == null) {
+			return false;
+		}
+		return slot >= 0 && slot < menu.slots.size();
 	}
 
 	private static int randomDelayMs(int minDelayMs, int maxDelayMs) {

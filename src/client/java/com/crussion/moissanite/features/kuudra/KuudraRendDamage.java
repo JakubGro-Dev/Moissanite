@@ -59,13 +59,19 @@ public final class KuudraRendDamage {
 			String formattedDamage = parseToShorthandNumber(diff * 9600);
 			long phaseTime = KuudraPhase.KILL.getTime(System.currentTimeMillis());
 			String formattedTime = formatElapsedTimeMs(phaseTime);
+			
+			int ticksSincePull = com.crussion.moissanite.features.cheats.AutoRend_Reworked.getTicksSincePull();
+			String tickText = ticksSincePull >= 0 
+					? ChatFormatting.GRAY + " [" + ticksSincePull + "t] " 
+					: " ";
+					
 			FeatureChat.sendPrefixed(
 					"Rend",
 					ChatFormatting.WHITE + "Someone pulled for "
 							+ damageColor + formattedDamage
 							+ ChatFormatting.WHITE + " damage at "
 							+ ChatFormatting.GREEN + formattedTime
-							+ ChatFormatting.WHITE + ".");
+							+ tickText + ChatFormatting.WHITE + ".");
 		}
 
 		kuudraLastHp = kuudraHp;

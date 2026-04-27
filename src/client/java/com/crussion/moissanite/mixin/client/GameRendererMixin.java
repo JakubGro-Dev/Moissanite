@@ -2,9 +2,13 @@ package com.crussion.moissanite.mixin.client;
 
 import com.crussion.moissanite.definitions.UiDefinitions;
 import com.crussion.moissanite.features.general.Zoom;
+import com.crussion.moissanite.ui.imgui.ImGuiHandler;
+import com.crussion.moissanite.ui.imgui.ImGuiScreen;
 import com.mojang.blaze3d.vertex.PoseStack;
 
 import net.minecraft.client.Camera;
+import net.minecraft.client.DeltaTracker;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 
 import org.spongepowered.asm.mixin.Mixin;
@@ -27,5 +31,12 @@ public class GameRendererMixin {
 			CallbackInfoReturnable<Float> cir) {
 		Float currentFov = cir.getReturnValue();
 		cir.setReturnValue(Zoom.applyZoomFov(currentFov != null ? currentFov.floatValue() : 70.0F));
+	}
+
+	@Inject(method = "render", at = @At("RETURN"))
+	private void moissanite$renderImGui(DeltaTracker deltaTracker, boolean renderLevel, CallbackInfo ci) {
+		if (Minecraft.getInstance().screen instanceof ImGuiScreen screen) {
+			ImGuiHandler.render(screen);
+		}
 	}
 }

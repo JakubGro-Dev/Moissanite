@@ -60,7 +60,8 @@ public final class AutoExperimentMacro {
 	private static final int MAX_SUPERPAIRS_DELAY_MS = 10_000;
 	private static final int MIN_SUPERPAIRS_PAIR_CLAIMS = 1;
 	private static final int MAX_SUPERPAIRS_PAIR_CLAIMS = 20;
-	private static final double SUPERPAIRS_XP_FALLBACK_UNCOVERED_RATIO = 0.90D;
+	private static final int SUPERPAIRS_REMAINING_CLICKS_SCAN_CHARS = 20;
+	private static final double SUPERPAIRS_XP_FALLBACK_UNCOVERED_RATIO = 0.80D;
 	private static final int RENEW_EXPERIMENTS_LEVEL_COST = 50;
 	private static final int TITANIC_LEVEL_THRESHOLD = 110;
 	private static final double ROTATION_MULTIPLIER = 0.6D;
@@ -113,7 +114,7 @@ public final class AutoExperimentMacro {
 			28, 29, 30, 31, 32, 33, 34,
 			37, 38, 39, 40, 41, 42, 43
 	};
-	private static final String[] SKYHANNI_MAX_LEVEL_ENCHANT_TARGETS = {
+	private static final String[] MAX_LEVEL_ENCHANT_TARGETS = {
 			"angler vi",
 			"bane of arthropods vii",
 			"big brain v",
@@ -238,9 +239,13 @@ public final class AutoExperimentMacro {
 	private static final Set<Integer> superpairsClickedRevealSlots = new HashSet<>();
 	private static final Set<Integer> superpairsIgnoredPrioritySlots = new HashSet<>();
 	private static final Set<String> superpairsExhaustedPairKeys = new HashSet<>();
+	private static final Set<Integer> superpairsHandledInstantFindSlots = new HashSet<>();
 	private static SuperpairsPair activeSuperpairsPair;
 	private static int activeSuperpairsPairClicksRemaining;
 	private static boolean activeSuperpairsClickFirstNext;
+	private static boolean superpairsInstantFindPending;
+	private static int superpairsNoClicksFallbackClicks;
+	private static int lastSuperpairsRevealSlot = -1;
 	private static int lastSuperpairsClickTick = -ticksForDelayMs(DEFAULT_SUPERPAIRS_CLICK_DELAY_MS);
 
 	private AutoExperimentMacro() {
@@ -730,7 +735,27 @@ public final class AutoExperimentMacro {
 			return;
 		}
 
+		int remainingClicks = readSuperpairsRemainingClicks(menu);
+		if (remainingClicks == 0 && handleSuperpairsNoClicksFallback(client, menu)) {
+			return;
+		}
+		if (remainingClicks > 0) {
+			superpairsNoClicksFallbackClicks = 0;
+		}
+
+		updateSuperpairsInstantFindState(menu);
+		if (superpairsInstantFindPending && handleSuperpairsInstantFindTarget(client, menu)) {
+			return;
+		}
+
 		if (activeSuperpairsPair != null) {
+			clickActiveSuperpairsPair(client, menu);
+			return;
+		}
+
+		SuperpairsPair revealedPriorityPair = findLastRevealedPriorityPair(menu);
+		if (revealedPriorityPair != null) {
+			startSuperpairsPair(revealedPriorityPair, true);
 			clickActiveSuperpairsPair(client, menu);
 			return;
 		}
@@ -743,6 +768,13 @@ public final class AutoExperimentMacro {
 		}
 
 		if (isSuperpairsMostlyUncovered(menu) && !hasVisibleSuperpairsPriorityReward(menu)) {
+			SuperpairsPair revealedXpPair = findLastRevealedEnchantingXpPair(menu);
+			if (revealedXpPair != null) {
+				startSuperpairsPair(revealedXpPair, true);
+				clickActiveSuperpairsPair(client, menu);
+				return;
+			}
+
 			SuperpairsPair xpPair = findHighestEnchantingXpPair(menu);
 			if (xpPair != null) {
 				startSuperpairsPair(xpPair);
@@ -756,6 +788,7 @@ public final class AutoExperimentMacro {
 			if (clickSuperpairsSlot(client, menu, revealSlot)) {
 				lastSuperpairsClickTick = macroElapsedTicks;
 				superpairsClickedRevealSlots.add(revealSlot);
+				lastSuperpairsRevealSlot = revealSlot;
 			}
 			return;
 		}
@@ -764,6 +797,7 @@ public final class AutoExperimentMacro {
 		if (fillerSlot != -1 && canClickSuperpairs()) {
 			if (clickSuperpairsSlot(client, menu, fillerSlot)) {
 				lastSuperpairsClickTick = macroElapsedTicks;
+				lastSuperpairsRevealSlot = isSuperpairsHiddenSlot(menu, fillerSlot) ? fillerSlot : -1;
 			}
 		}
 	}
@@ -845,11 +879,109 @@ public final class AutoExperimentMacro {
 		}
 	}
 
+	private static boolean handleSuperpairsNoClicksFallback(Minecraft client, ChestMenu menu) {
+		if (!canClickSuperpairs()) {
+			return true;
+		}
+
+		int slot = findRandomSuperpairsClickableSlot(menu);
+		if (slot == -1) {
+			return false;
+		}
+
+		boolean hiddenTile = isSuperpairsHiddenSlot(menu, slot);
+		if (!clickSuperpairsSlot(client, menu, slot)) {
+			return true;
+		}
+
+		lastSuperpairsClickTick = macroElapsedTicks;
+		superpairsNoClicksFallbackClicks++;
+		if (hiddenTile) {
+			superpairsClickedRevealSlots.add(slot);
+			lastSuperpairsRevealSlot = slot;
+		}
+		if (superpairsNoClicksFallbackClicks == 1) {
+			sendMessage("Remaining clicks is 0, clicking random slots to finish.");
+		}
+		return true;
+	}
+
+	private static void updateSuperpairsInstantFindState(ChestMenu menu) {
+		if (menu == null) {
+			return;
+		}
+
+		for (int slotIndex : SUPERPAIRS_BOARD_SLOTS) {
+			if (slotIndex < 0 || slotIndex >= menu.slots.size()) {
+				continue;
+			}
+			if (!superpairsClickedRevealSlots.contains(slotIndex)) {
+				continue;
+			}
+			if (superpairsHandledInstantFindSlots.contains(slotIndex)) {
+				continue;
+			}
+
+			Slot slot = menu.slots.get(slotIndex);
+			if (slot == null || !slot.hasItem() || !isSuperpairsInstantFindPowerup(slot.getItem())) {
+				continue;
+			}
+			superpairsHandledInstantFindSlots.add(slotIndex);
+			superpairsInstantFindPending = true;
+			sendMessage("Instant Find active, selecting next target.");
+			return;
+		}
+	}
+
+	private static boolean handleSuperpairsInstantFindTarget(Minecraft client, ChestMenu menu) {
+		if (!canClickSuperpairs()) {
+			return true;
+		}
+
+		int slot = findVisibleSuperpairsPriorityRewardSlot(menu);
+		String target = "priority reward";
+		if (slot == -1) {
+			slot = findHighestVisibleEnchantingXpSlot(menu);
+			target = "highest enchanting XP";
+		}
+		if (slot == -1) {
+			slot = findNextSuperpairsRevealSlot(menu);
+			target = "next hidden tile";
+		}
+		if (slot == -1) {
+			slot = findAnySuperpairsClickableSlot(menu);
+			target = "next available tile";
+		}
+		if (slot == -1) {
+			superpairsInstantFindPending = false;
+			return false;
+		}
+
+		boolean hiddenTile = isSuperpairsHiddenSlot(menu, slot);
+		if (!clickSuperpairsSlot(client, menu, slot)) {
+			return true;
+		}
+
+		lastSuperpairsClickTick = macroElapsedTicks;
+		superpairsInstantFindPending = false;
+		if (hiddenTile) {
+			superpairsClickedRevealSlots.add(slot);
+			lastSuperpairsRevealSlot = slot;
+		}
+		sendMessage("Instant Find clicked " + target + " at slot " + slot + ".");
+		return true;
+	}
+
 	private static void startSuperpairsPair(SuperpairsPair pair) {
+		startSuperpairsPair(pair, false);
+	}
+
+	private static void startSuperpairsPair(SuperpairsPair pair, boolean firstClickAlreadyUsed) {
 		activeSuperpairsPair = pair;
 		int pairClaims = configuredSuperpairsPairClaims();
-		activeSuperpairsPairClicksRemaining = pairClaims * 2;
-		activeSuperpairsClickFirstNext = true;
+		activeSuperpairsPairClicksRemaining = (pairClaims * 2) - (firstClickAlreadyUsed ? 1 : 0);
+		activeSuperpairsClickFirstNext = !firstClickAlreadyUsed;
+		lastSuperpairsRevealSlot = -1;
 		if (pair.xpValue() > 0) {
 			sendMessage("Matching enchanting XP pair " + pair.reward() + " " + formatPairClaimCount(pairClaims) + ".");
 		} else {
@@ -886,7 +1018,7 @@ public final class AutoExperimentMacro {
 		if (pair == null) {
 			return;
 		}
-		superpairsExhaustedPairKeys.add(superpairsPairKey(pair.reward(), pair.firstSlot(), pair.secondSlot()));
+		superpairsExhaustedPairKeys.add(superpairsPairKey(pair.matchKey(), pair.firstSlot(), pair.secondSlot()));
 		superpairsIgnoredPrioritySlots.add(pair.firstSlot());
 		superpairsIgnoredPrioritySlots.add(pair.secondSlot());
 	}
@@ -933,10 +1065,11 @@ public final class AutoExperimentMacro {
 					continue;
 				}
 				superpairsKnownHighTierSlots.add(slotIndex);
-				if (isSuperpairsPairExhausted(reward, firstSlot, slotIndex)) {
+				String matchKey = priorityRewardMatchKey(reward);
+				if (isSuperpairsPairExhausted(matchKey, firstSlot, slotIndex)) {
 					continue;
 				}
-				return new SuperpairsPair(reward, firstSlot, slotIndex, 0);
+				return new SuperpairsPair(reward, matchKey, firstSlot, slotIndex, 0);
 			}
 		}
 
@@ -954,14 +1087,100 @@ public final class AutoExperimentMacro {
 		return reward.equals(priorityRewardSignature(slot.getItem()));
 	}
 
-	private static boolean isSuperpairsPairExhausted(String reward, int firstSlot, int secondSlot) {
-		return superpairsExhaustedPairKeys.contains(superpairsPairKey(reward, firstSlot, secondSlot));
+	private static SuperpairsPair findLastRevealedPriorityPair(ChestMenu menu) {
+		if (menu == null || lastSuperpairsRevealSlot < 0 || lastSuperpairsRevealSlot >= menu.slots.size()) {
+			return null;
+		}
+		if (superpairsIgnoredPrioritySlots.contains(lastSuperpairsRevealSlot)) {
+			return null;
+		}
+		Slot revealedSlot = menu.slots.get(lastSuperpairsRevealSlot);
+		if (revealedSlot == null || !revealedSlot.hasItem()) {
+			return null;
+		}
+
+		ItemStack revealedStack = revealedSlot.getItem();
+		if (isSuperpairsHiddenTile(revealedStack)) {
+			return null;
+		}
+		String reward = priorityRewardSignature(revealedStack);
+		if (reward.isBlank()) {
+			return null;
+		}
+
+		String matchKey = priorityRewardMatchKey(reward);
+		for (int slotIndex : SUPERPAIRS_BOARD_SLOTS) {
+			if (slotIndex == lastSuperpairsRevealSlot || slotIndex < 0 || slotIndex >= menu.slots.size()) {
+				continue;
+			}
+			if (superpairsIgnoredPrioritySlots.contains(slotIndex)) {
+				continue;
+			}
+			if (isSuperpairsPairExhausted(matchKey, lastSuperpairsRevealSlot, slotIndex)) {
+				continue;
+			}
+			if (!slotMatchesPriorityReward(menu, slotIndex, reward)) {
+				continue;
+			}
+			return new SuperpairsPair(reward, matchKey, lastSuperpairsRevealSlot, slotIndex, 0);
+		}
+		return null;
 	}
 
-	private static String superpairsPairKey(String reward, int firstSlot, int secondSlot) {
+	private static SuperpairsPair findLastRevealedEnchantingXpPair(ChestMenu menu) {
+		if (menu == null || lastSuperpairsRevealSlot < 0 || lastSuperpairsRevealSlot >= menu.slots.size()) {
+			return null;
+		}
+		if (superpairsIgnoredPrioritySlots.contains(lastSuperpairsRevealSlot)) {
+			return null;
+		}
+		Slot revealedSlot = menu.slots.get(lastSuperpairsRevealSlot);
+		if (revealedSlot == null || !revealedSlot.hasItem()) {
+			return null;
+		}
+
+		ItemStack revealedStack = revealedSlot.getItem();
+		if (isSuperpairsHiddenTile(revealedStack)) {
+			return null;
+		}
+		String matchKey = enchantingXpRewardMatchKey(revealedStack);
+		if (matchKey.isBlank()) {
+			return null;
+		}
+
+		int xp = enchantingXpAmount(revealedStack);
+		for (int slotIndex : SUPERPAIRS_BOARD_SLOTS) {
+			if (slotIndex == lastSuperpairsRevealSlot || slotIndex < 0 || slotIndex >= menu.slots.size()) {
+				continue;
+			}
+			if (superpairsIgnoredPrioritySlots.contains(slotIndex)) {
+				continue;
+			}
+			if (isSuperpairsPairExhausted(matchKey, lastSuperpairsRevealSlot, slotIndex)) {
+				continue;
+			}
+
+			Slot slot = menu.slots.get(slotIndex);
+			if (slot == null || !slot.hasItem()) {
+				continue;
+			}
+			ItemStack stack = slot.getItem();
+			if (isSuperpairsHiddenTile(stack) || !matchKey.equals(enchantingXpRewardMatchKey(stack))) {
+				continue;
+			}
+			return new SuperpairsPair(formatXpReward(xp), matchKey, lastSuperpairsRevealSlot, slotIndex, xp);
+		}
+		return null;
+	}
+
+	private static boolean isSuperpairsPairExhausted(String matchKey, int firstSlot, int secondSlot) {
+		return superpairsExhaustedPairKeys.contains(superpairsPairKey(matchKey, firstSlot, secondSlot));
+	}
+
+	private static String superpairsPairKey(String matchKey, int firstSlot, int secondSlot) {
 		int lowSlot = Math.min(firstSlot, secondSlot);
 		int highSlot = Math.max(firstSlot, secondSlot);
-		return reward + ":" + lowSlot + ":" + highSlot;
+		return matchKey + ":" + lowSlot + ":" + highSlot;
 	}
 
 	private static boolean hasVisibleSuperpairsPriorityReward(ChestMenu menu) {
@@ -987,15 +1206,77 @@ public final class AutoExperimentMacro {
 		return false;
 	}
 
+	private static int findVisibleSuperpairsPriorityRewardSlot(ChestMenu menu) {
+		if (menu == null) {
+			return -1;
+		}
+		for (int slotIndex : SUPERPAIRS_BOARD_SLOTS) {
+			if (slotIndex < 0 || slotIndex >= menu.slots.size()) {
+				continue;
+			}
+			if (superpairsIgnoredPrioritySlots.contains(slotIndex)) {
+				continue;
+			}
+			Slot slot = menu.slots.get(slotIndex);
+			if (slot == null || !slot.hasItem()) {
+				continue;
+			}
+			ItemStack stack = slot.getItem();
+			if (isSuperpairsHiddenTile(stack) || isSuperpairsInstantFindPowerup(stack)) {
+				continue;
+			}
+			if (!priorityRewardSignature(stack).isBlank()) {
+				return slotIndex;
+			}
+		}
+		return -1;
+	}
+
+	private static int findHighestVisibleEnchantingXpSlot(ChestMenu menu) {
+		if (menu == null) {
+			return -1;
+		}
+
+		int bestSlot = -1;
+		int bestXp = 0;
+		for (int slotIndex : SUPERPAIRS_BOARD_SLOTS) {
+			if (slotIndex < 0 || slotIndex >= menu.slots.size()) {
+				continue;
+			}
+			if (superpairsIgnoredPrioritySlots.contains(slotIndex)) {
+				continue;
+			}
+			Slot slot = menu.slots.get(slotIndex);
+			if (slot == null || !slot.hasItem()) {
+				continue;
+			}
+			ItemStack stack = slot.getItem();
+			if (isSuperpairsHiddenTile(stack) || isSuperpairsInstantFindPowerup(stack)) {
+				continue;
+			}
+
+			int xp = enchantingXpAmount(stack);
+			if (xp > bestXp) {
+				bestXp = xp;
+				bestSlot = slotIndex;
+			}
+		}
+		return bestSlot;
+	}
+
 	private static SuperpairsPair findHighestEnchantingXpPair(ChestMenu menu) {
 		if (menu == null) {
 			return null;
 		}
 
-		Map<Integer, Integer> firstSlotByXp = new HashMap<>();
+		Map<String, List<Integer>> slotsByMatchKey = new HashMap<>();
+		Map<String, Integer> xpByMatchKey = new HashMap<>();
 		SuperpairsPair bestPair = null;
 		for (int slotIndex : SUPERPAIRS_BOARD_SLOTS) {
 			if (slotIndex < 0 || slotIndex >= menu.slots.size()) {
+				continue;
+			}
+			if (superpairsIgnoredPrioritySlots.contains(slotIndex)) {
 				continue;
 			}
 			Slot slot = menu.slots.get(slotIndex);
@@ -1012,13 +1293,38 @@ public final class AutoExperimentMacro {
 				continue;
 			}
 
-			Integer firstSlot = firstSlotByXp.get(xp);
-			if (firstSlot == null) {
-				firstSlotByXp.put(xp, slotIndex);
+			String matchKey = enchantingXpRewardMatchKey(stack);
+			if (matchKey.isBlank()) {
 				continue;
 			}
-			if (firstSlot != slotIndex && (bestPair == null || xp > bestPair.xpValue())) {
-				bestPair = new SuperpairsPair(formatXpReward(xp), firstSlot, slotIndex, xp);
+			slotsByMatchKey.computeIfAbsent(matchKey, ignored -> new java.util.ArrayList<>()).add(slotIndex);
+			xpByMatchKey.put(matchKey, xp);
+		}
+
+		for (Map.Entry<String, List<Integer>> entry : slotsByMatchKey.entrySet()) {
+			String matchKey = entry.getKey();
+			List<Integer> slots = entry.getValue();
+			if (slots.size() < 2) {
+				continue;
+			}
+
+			int xp = xpByMatchKey.getOrDefault(matchKey, 0);
+			if (xp <= 0 || (bestPair != null && xp < bestPair.xpValue())) {
+				continue;
+			}
+			for (int firstIndex = 0; firstIndex < slots.size(); firstIndex++) {
+				for (int secondIndex = firstIndex + 1; secondIndex < slots.size(); secondIndex++) {
+					int firstSlot = slots.get(firstIndex);
+					int secondSlot = slots.get(secondIndex);
+					if (isSuperpairsPairExhausted(matchKey, firstSlot, secondSlot)) {
+						continue;
+					}
+					if (bestPair == null || xp > bestPair.xpValue()) {
+						bestPair = new SuperpairsPair(formatXpReward(xp), matchKey, firstSlot, secondSlot, xp);
+					}
+					firstIndex = slots.size();
+					break;
+				}
 			}
 		}
 		return bestPair;
@@ -1095,6 +1401,42 @@ public final class AutoExperimentMacro {
 			}
 		}
 		return -1;
+	}
+
+	private static int findRandomSuperpairsClickableSlot(ChestMenu menu) {
+		if (menu == null) {
+			return -1;
+		}
+
+		int candidates = 0;
+		for (int slotIndex : SUPERPAIRS_BOARD_SLOTS) {
+			if (isSuperpairsClickableSlot(menu, slotIndex)) {
+				candidates++;
+			}
+		}
+		if (candidates <= 0) {
+			return -1;
+		}
+
+		int selected = java.util.concurrent.ThreadLocalRandom.current().nextInt(candidates);
+		for (int slotIndex : SUPERPAIRS_BOARD_SLOTS) {
+			if (!isSuperpairsClickableSlot(menu, slotIndex)) {
+				continue;
+			}
+			if (selected == 0) {
+				return slotIndex;
+			}
+			selected--;
+		}
+		return -1;
+	}
+
+	private static boolean isSuperpairsClickableSlot(ChestMenu menu, int slotIndex) {
+		if (menu == null || slotIndex < 0 || slotIndex >= menu.slots.size()) {
+			return false;
+		}
+		Slot slot = menu.slots.get(slotIndex);
+		return slot != null && slot.hasItem();
 	}
 
 	private static boolean canClickSuperpairs() {
@@ -1555,6 +1897,24 @@ public final class AutoExperimentMacro {
 		return path.endsWith("_stained_glass_pane") || path.endsWith("_stained_glass");
 	}
 
+	private static boolean isSuperpairsHiddenSlot(ChestMenu menu, int slotIndex) {
+		if (menu == null || slotIndex < 0 || slotIndex >= menu.slots.size()) {
+			return false;
+		}
+		Slot slot = menu.slots.get(slotIndex);
+		return slot != null && slot.hasItem() && isSuperpairsHiddenTile(slot.getItem());
+	}
+
+	private static boolean isSuperpairsInstantFindPowerup(ItemStack stack) {
+		if (stack == null || stack.isEmpty()) {
+			return false;
+		}
+		String name = normalizedStackName(stack);
+		String text = normalizedStackText(stack);
+		return name.contains("instant find")
+				|| (text.contains("instant find") && text.contains("powerup for next click"));
+	}
+
 	private static String priorityRewardSignature(ItemStack stack) {
 		if (stack == null || stack.isEmpty()) {
 			return "";
@@ -1577,6 +1937,13 @@ public final class AutoExperimentMacro {
 		return "";
 	}
 
+	private static String priorityRewardMatchKey(String reward) {
+		if (reward == null || reward.isBlank()) {
+			return "";
+		}
+		return "priority:" + TextNormalizer.normalize(reward);
+	}
+
 	private static String highTierEnchantSignature(ItemStack stack) {
 		if (stack == null || stack.isEmpty()) {
 			return "";
@@ -1590,7 +1957,7 @@ public final class AutoExperimentMacro {
 		String text = normalizedStackText(stack);
 		boolean looksLikeBook = itemPath(stack).equals("enchanted_book") || text.contains("enchanted book");
 		if (looksLikeBook) {
-			for (String target : SKYHANNI_MAX_LEVEL_ENCHANT_TARGETS) {
+			for (String target : MAX_LEVEL_ENCHANT_TARGETS) {
 				if (text.contains(target)) {
 					return target;
 				}
@@ -1654,6 +2021,62 @@ public final class AutoExperimentMacro {
 			return Math.max(0, (int) Math.round(Double.parseDouble(amountText) * multiplier));
 		} catch (NumberFormatException ignored) {
 			return 0;
+		}
+	}
+
+	private static String enchantingXpRewardMatchKey(ItemStack stack) {
+		int xp = enchantingXpAmount(stack);
+		if (xp <= 0) {
+			return "";
+		}
+		return "xp:" + xp + ":" + itemPath(stack) + ":" + normalizedStackName(stack);
+	}
+
+	private static int readSuperpairsRemainingClicks(ChestMenu menu) {
+		if (menu == null) {
+			return -1;
+		}
+
+		int maxSlot = containerSlotCount(menu);
+		for (int slotIndex = 0; slotIndex < maxSlot; slotIndex++) {
+			Slot slot = menu.slots.get(slotIndex);
+			if (slot == null || !slot.hasItem()) {
+				continue;
+			}
+			int remainingClicks = parseRemainingClicks(normalizedStackText(slot.getItem()));
+			if (remainingClicks >= 0) {
+				return remainingClicks;
+			}
+		}
+		return -1;
+	}
+
+	private static int parseRemainingClicks(String text) {
+		if (text == null || text.isBlank()) {
+			return -1;
+		}
+		int marker = text.indexOf("remaining clicks");
+		if (marker == -1) {
+			return -1;
+		}
+
+		int cursor = marker + "remaining clicks".length();
+		int scanEnd = Math.min(text.length(), cursor + SUPERPAIRS_REMAINING_CLICKS_SCAN_CHARS);
+		while (cursor < scanEnd && !Character.isDigit(text.charAt(cursor))) {
+			cursor++;
+		}
+		if (cursor >= scanEnd) {
+			return -1;
+		}
+
+		int start = cursor;
+		while (cursor < scanEnd && Character.isDigit(text.charAt(cursor))) {
+			cursor++;
+		}
+		try {
+			return Integer.parseInt(text.substring(start, cursor));
+		} catch (NumberFormatException ignored) {
+			return -1;
 		}
 	}
 
@@ -2179,9 +2602,13 @@ public final class AutoExperimentMacro {
 		superpairsClickedRevealSlots.clear();
 		superpairsIgnoredPrioritySlots.clear();
 		superpairsExhaustedPairKeys.clear();
+		superpairsHandledInstantFindSlots.clear();
 		activeSuperpairsPair = null;
 		activeSuperpairsPairClicksRemaining = 0;
 		activeSuperpairsClickFirstNext = true;
+		superpairsInstantFindPending = false;
+		superpairsNoClicksFallbackClicks = 0;
+		lastSuperpairsRevealSlot = -1;
 		lastSuperpairsClickTick = -configuredSuperpairsClickDelayTicks();
 	}
 
@@ -2193,6 +2620,9 @@ public final class AutoExperimentMacro {
 	}
 
 	private static void sendMessage(String text) {
+		if (!Boolean.TRUE.equals(UiDefinitions.ENCHANTING_MACRO_DEBUG.get())) {
+			return;
+		}
 		FeatureChat.sendPrefixed(FEATURE_NAME, text);
 	}
 
@@ -2283,7 +2713,7 @@ public final class AutoExperimentMacro {
 	private record StakeOption(ExperimentTier tier, int slot, int enchantingLevel) {
 	}
 
-	private record SuperpairsPair(String reward, int firstSlot, int secondSlot, int xpValue) {
+	private record SuperpairsPair(String reward, String matchKey, int firstSlot, int secondSlot, int xpValue) {
 	}
 
 	private record TierOption(ExperimentTier tier, int slot) {

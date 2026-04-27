@@ -134,8 +134,13 @@ public final class AutoRend_Reworked {
 	private static final Map<Integer, CandidateBoneStand> trackedBoneCandidates = new HashMap<>();
 	private static final Set<Integer> seenBoneStandIds = new HashSet<>();
 	private static RenderType autoRendTriggerRenderType;
+	private static int pullTickCounter = -1;
 
 	private AutoRend_Reworked() {
+	}
+
+	public static int getTicksSincePull() {
+		return pullTickCounter;
 	}
 
 	public static void init() {
@@ -157,13 +162,12 @@ public final class AutoRend_Reworked {
 				VanillaHudElements.SUBTITLES,
 				AUTO_REND_RESULT_HUD_ID,
 				AutoRend_Reworked::renderRendResultOverlay);
-		FakeKeybinds.onKeyPress(UiDefinitions.AUTO_REND_TRIGGER_KEYBIND, AutoRend_Reworked::triggerKuudraDead);
 	}
 
 	private static void handleClientTick(Minecraft client) {
 		tickRendResultState(client);
-		if (Boolean.TRUE.equals(UiDefinitions.AUTO_REND_HARDCODE.get())) {
-			return;
+		if (pullTickCounter >= 0) {
+			pullTickCounter++;
 		}
 		if (worldLoadResetTicksRemaining > 0) {
 			worldLoadResetTicksRemaining--;
@@ -204,9 +208,6 @@ public final class AutoRend_Reworked {
 	}
 
 	private static void triggerKuudraDead() {
-		if (Boolean.TRUE.equals(UiDefinitions.AUTO_REND_HARDCODE.get())) {
-			return;
-		}
 		if (!Boolean.TRUE.equals(UiDefinitions.AUTO_REND_DEBUG.get())) {
 			return;
 		}
@@ -227,9 +228,6 @@ public final class AutoRend_Reworked {
 
 	private static void renderActivationZones(WorldRenderContext context) {
 		if (context == null || context.matrices() == null || context.consumers() == null) {
-			return;
-		}
-		if (Boolean.TRUE.equals(UiDefinitions.AUTO_REND_HARDCODE.get())) {
 			return;
 		}
 		Minecraft client = Minecraft.getInstance();
@@ -349,6 +347,7 @@ public final class AutoRend_Reworked {
 		sequenceElapsedTicks = 0;
 		resetArmorSwapState();
 		resetBackboneTracking();
+		pullTickCounter = -1;
 		enterStep(SequenceStep.SWAP_BONEMERANG);
 		sendAutoRendMessage("Sequence started.");
 	}
@@ -512,6 +511,7 @@ public final class AutoRend_Reworked {
 		if (!stepStarted) {
 			stepStarted = true;
 			boolean pull = PlayerInputActions.leftClick();
+			pullTickCounter = 0;
 			beginRendResultWindow();
 			sendAutoRendMessage("Left click Bonemerang pull: " + actionStatus(pull));
 		}
@@ -524,6 +524,7 @@ public final class AutoRend_Reworked {
 		if (!stepStarted) {
 			stepStarted = true;
 			boolean pull = PlayerInputActions.leftClick();
+			pullTickCounter = 0;
 			beginRendResultWindow();
 			sendAutoRendMessage("Left click Terminator pull: " + actionStatus(pull));
 		}
@@ -605,6 +606,7 @@ public final class AutoRend_Reworked {
 		sequenceElapsedTicks = 0;
 		resetArmorSwapState();
 		resetBackboneTracking();
+		pullTickCounter = -1;
 		enterStep(SequenceStep.IDLE);
 		if (wasRunning && rendResultWindowActive && rendResultGraceTicks < 0) {
 			rendResultGraceTicks = 0;
@@ -672,7 +674,8 @@ public final class AutoRend_Reworked {
 		if (!Boolean.TRUE.equals(UiDefinitions.AUTO_REND_DEBUG.get())) {
 			return;
 		}
-		FeatureChat.sendPrefixed("Auto Rend Reworked", text);
+		String tickInfo = pullTickCounter >= 0 ? " [" + pullTickCounter + "t]" : "";
+		FeatureChat.sendPrefixed("Auto Rend", text + tickInfo);
 	}
 
 	private static void startArmorSwapIfNeeded() {
@@ -681,10 +684,10 @@ public final class AutoRend_Reworked {
 		}
 
 		armorSwapStarted = true;
-		int armorSlot = UiDefinitions.AUTO_REND_SWAP_ARMOR.get().intValue();
+		int armorSlot = UiDefinitions.AUTO_REND_SWAP_ARMOR.get().intValue() + 1;
 		armorSwapEnabled = armorSlot >= 1 && armorSlot <= 9;
 		if (!armorSwapEnabled) {
-			sendAutoRendMessage("Swap armor skipped (slider is -1/0).");
+			sendAutoRendMessage("Swap armor skipped (slider is -1).");
 			return;
 		}
 

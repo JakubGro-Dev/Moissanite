@@ -1,5 +1,6 @@
 package com.crussion.moissanite.ui.navigation;
 
+import com.crussion.moissanite.ui.imgui.ImGuiScreen;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -19,7 +20,11 @@ public final class ScreenRouter {
 		if (factory == null) {
 			return;
 		}
-		Minecraft.getInstance().setScreen(factory.get());
+		Screen screen = factory.get();
+		if (screen instanceof ImGuiScreen imGuiScreen) {
+			imGuiScreen.open();
+			return;
+		}
+		Minecraft.getInstance().setScreen(screen);
 	}
 }
-

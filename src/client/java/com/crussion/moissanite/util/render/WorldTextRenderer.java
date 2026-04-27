@@ -8,7 +8,7 @@ import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 
 public final class WorldTextRenderer {
-	private static final float KIC_TEXT_SCALE = 0.025f;
+	private static final float TEXT_SCALE = 0.025f;
 
 	private WorldTextRenderer() {
 	}
@@ -39,7 +39,7 @@ public final class WorldTextRenderer {
 		}
 
 		Vec3 cameraPos = client.gameRenderer.getMainCamera().position();
-		float actualScale = scale * KIC_TEXT_SCALE;
+		float actualScale = scale * TEXT_SCALE;
 
 		context.matrices().pushPose();
 		context.matrices().translate(
