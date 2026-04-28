@@ -2,7 +2,7 @@
 
 # Moissanite
 
-UAYOR
+Hypixel Skyblock QOL (UAYOR)
 
 [![Minecraft](https://img.shields.io/badge/Minecraft-1.21.11-2ea043?style=for-the-badge)]()
 [![Fabric](https://img.shields.io/badge/Fabric-Client%20Mod-5865f2?style=for-the-badge)]()
