@@ -12,6 +12,71 @@ UAYOR
 
 ---
 
+## Menu
+
+<details>
+<summary><b>Menu Preview</b></summary>
+
+<br>
+
+<div align="center">
+
+<img src="https://i.imgur.com/U5j1QQ8.png" width="80%" alt="Moissanite Menu Preview">
+
+<br><br>
+
+<img src="https://i.imgur.com/9lUEnRm.png" width="80%" alt="Moissanite Feature Preview">
+
+<br><br>
+
+<img src="https://i.imgur.com/rkUy5xk.png" width="80%" alt="Moissanite Feature Preview">
+
+<br><br>
+
+<img src="https://i.imgur.com/cJyaFOF.png" width="80%" alt="Moissanite Feature Preview">
+
+<br><br>
+
+<img src="https://i.imgur.com/01dGsoL.png" width="80%" alt="Moissanite Feature Preview">
+
+<br><br>
+
+<img src="https://i.imgur.com/6axpaEa.png" width="80%" alt="Moissanite Feature Preview">
+
+<br><br>
+
+<img src="https://i.imgur.com/kV48DH6.png" width="80%" alt="Moissanite Feature Preview">
+
+<br><br>
+
+<img src="https://i.imgur.com/RxGV39P.png" width="80%" alt="Moissanite Feature Preview">
+
+<br><br>
+
+<img src="https://i.imgur.com/vVA1YNe.png" width="80%" alt="Moissanite Feature Preview">
+
+<br><br>
+
+<img src="https://i.imgur.com/t53Py8u.png" width="80%" alt="Moissanite Feature Preview">
+
+<br><br>
+
+<img src="https://i.imgur.com/Uez8aVe.png" width="80%" alt="Moissanite Feature Preview">
+
+<br><br>
+
+<img src="https://i.imgur.com/6RKocyb.png" width="80%" alt="Moissanite Feature Preview">
+
+<br><br>
+
+<img src="https://i.imgur.com/jB8VS5L.png" width="80%" alt="Moissanite Feature Preview">
+
+</div>
+
+</details>
+
+---
+
 ## Features
 
 ### General
