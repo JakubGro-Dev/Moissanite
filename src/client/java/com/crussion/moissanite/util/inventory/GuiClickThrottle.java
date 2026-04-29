@@ -57,6 +57,21 @@ public final class GuiClickThrottle {
 		return true;
 	}
 
+	public static boolean clickSlotLikeUser(Minecraft client, ChestMenu menu, int slot, int minDelayMs, int maxDelayMs) {
+		if (!isClickable(client, menu, slot)) {
+			return false;
+		}
+
+		long now = System.currentTimeMillis();
+		if (nextAllowedClickMs != 0L && now < nextAllowedClickMs) {
+			return false;
+		}
+
+		performClickSlotLikeUser(client, menu, slot);
+		nextAllowedClickMs = now + randomDelayMs(minDelayMs, maxDelayMs);
+		return true;
+	}
+
 	private static void performClickSlotLikeUser(Minecraft client, ChestMenu menu, int slot) {
 		if (client.screen instanceof ContainerScreen containerScreen && containerScreen.getMenu() == menu) {
 			Slot targetSlot = menu.slots.get(slot);
