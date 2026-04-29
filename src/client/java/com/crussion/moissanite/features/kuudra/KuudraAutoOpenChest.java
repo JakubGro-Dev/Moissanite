@@ -127,6 +127,10 @@ public final class KuudraAutoOpenChest {
 		sendMessage("Started.");
 	}
 
+	public static boolean isRunning() {
+		return running;
+	}
+
 	public static void stop() {
 		boolean blockManual = isCurrentCroesusScreen();
 		if (running) {

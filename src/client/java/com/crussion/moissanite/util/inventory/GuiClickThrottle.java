@@ -36,8 +36,9 @@ public final class GuiClickThrottle {
 
 		long now = System.currentTimeMillis();
 		if (nextAllowedClickMs == 0L) {
+			clickSlotDirect(client, menu, slot);
 			nextAllowedClickMs = now + randomDelayMs(minDelayMs, maxDelayMs);
-			return false;
+			return true;
 		}
 		if (now < nextAllowedClickMs) {
 			return false;

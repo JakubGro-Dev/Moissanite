@@ -412,6 +412,8 @@ public final class UiDefinitions {
 	public static final UiSwitch AUTO_DIRECTION = KUUDRA_CHEATS.toggle("Auto Direction", false);
 	public static final UiSwitch AUTO_DIRECTION_AUTO_HYPERION = KUUDRA_CHEATS.toggle("Auto Hyperion", false);
 	public static final UiSwitch AUTO_DIRECTION_AUTO_REAPER = KUUDRA_CHEATS.toggle("Auto Reaper", false);
+	public static final UiSwitch AUTO_SWAP_ARMOR_RAG = KUUDRA_CHEATS.toggle("Auto Swap Armor After Rag", false);
+	public static final UiSlider AUTO_SWAP_ARMOR_RAG_SLOT = KUUDRA_CHEATS.slider("Armor Slot", -1.0, 8.0, -1.0, 1.0);
 	public static final UiSwitch AUTO_PEARL = KUUDRA_CHEATS.toggle("Auto Pearl", false);
 	public static final UiKeybind AUTO_PEARL_KEYBIND = KUUDRA_CHEATS.keybind("Toggle Auto Pearl",
 			InputConstants.UNKNOWN.getValue());
@@ -459,8 +461,6 @@ public final class UiDefinitions {
 	public static final UiSlider AUTO_REND_SWAP_ARMOR = KUUDRA_CHEATS.slider("Swap Armor", -1.0, 8.0, -1.0, 1.0);
 	public static final UiButton AUTO_REND_SCAN_ITEMS = KUUDRA_CHEATS.button("Scan Items", "Scan Items",
 			button -> AutoRend_Reworked.scanItemSlots());
-	public static final UiSwitch AUTO_SWAP_ARMOR_RAG = KUUDRA_CHEATS.toggle("Auto Swap Armor After Rag", false);
-	public static final UiSlider AUTO_SWAP_ARMOR_RAG_SLOT = KUUDRA_CHEATS.slider("Armor Slot", -1.0, 8.0, -1.0, 1.0);
 			
 
 
@@ -502,7 +502,7 @@ public final class UiDefinitions {
 		AUTO_OPEN_KUUDRA_CHEST_FIRST_CLICK_DELAY.visibleWhen(AUTO_OPEN_KUUDRA_CHEST);
 		AUTO_OPEN_KUUDRA_CHEST_CLICK_DELAY.visibleWhen(AUTO_OPEN_KUUDRA_CHEST);
 		AUTO_OPEN_KUUDRA_CHEST_START.visibleWhen(AUTO_OPEN_KUUDRA_CHEST);
-		AUTO_OPEN_KUUDRA_CHEST_STOP.visibleWhen(AUTO_OPEN_KUUDRA_CHEST);
+		AUTO_OPEN_KUUDRA_CHEST_STOP.visibleWhen(KuudraAutoOpenChest::isRunning);
 		AUTO_TAP_AMOUNT.visibleWhen(AUTO_TAP);
 		AUTO_REND_ROTATION_MULTIPLIER.visibleWhen(AUTO_REND);
 		AUTO_REND_HYPERION.visibleWhen(AUTO_REND);
