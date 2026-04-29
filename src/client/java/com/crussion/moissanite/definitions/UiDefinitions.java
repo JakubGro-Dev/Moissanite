@@ -4,6 +4,7 @@ import com.crussion.moissanite.features.cheats.AutoPearl;
 import com.crussion.moissanite.features.cheats.AutoRend_Reworked;
 import com.crussion.moissanite.features.cheats.AutoExperimentMacro;
 import com.crussion.moissanite.features.cheats.KuudraPosTracker;
+import com.crussion.moissanite.features.kuudra.KuudraAutoOpenChest;
 import com.crussion.moissanite.features.visual.RenderImageOnScreen;
 import com.crussion.moissanite.features.visual.storage.StorageOverlayFeature;
 import com.crussion.moissanite.update.ModUpdater;
@@ -211,7 +212,6 @@ public final class UiDefinitions {
 	public static final UiSwitch DISABLE_IMPLOSION_DAMAGE = CHAT_GENERAL.toggle("Disable Implosion damage", false);
 	public static final UiSwitch DISABLE_ABILITY_COOLDOWN = CHAT_GENERAL.toggle("Disable ability cooldown", false);
 	public static final UiSwitch COMPACT_CHAT = CHAT_GENERAL.toggle("Compact Chat", false);
-	public static final UiSlider COMPACT_CHAT_TIME = CHAT_GENERAL.slider("Compact Chat Time", 1.0, 120.0, 10.0, 1.0);
 	public static final UiButton COMMAND_REPLACER_OPEN = CHAT_COMMAND_REPLACER.button("Command Replacer Editor", "Open",
 			button -> UiEntrypoints.open(ScreenIds.COMMAND_REPLACER));
 
@@ -423,6 +423,7 @@ public final class UiDefinitions {
 			"Auto Pearl Rotation Multiplier", 0.0, 2.0, 0.4, 0.1);
 	public static final UiSlider AUTO_PEARL_INACCURACY = KUUDRA_CHEATS.slider("Auto Pearl Inaccuracy", 0.0, 1.0, 0.0,
 			0.01);
+	public static final UiSwitch AUTO_PEARL_USE_ONLY_SKY = KUUDRA_CHEATS.toggle("Use only sky", false);
 	public static final UiSlider AUTO_PEARL_X = KUUDRA_CHEATS.slider("Auto Pearl X", -10000.0, 10000.0, 6.0, 1.0);
 	public static final UiSlider AUTO_PEARL_Y = KUUDRA_CHEATS.slider("Auto Pearl Y", -10000.0, 10000.0, 6.0, 1.0);
 	public static final UiButton AUTO_PEARL_MOVE = KUUDRA_CHEATS.button("Auto Pearl Move", "Move",
@@ -430,6 +431,15 @@ public final class UiDefinitions {
 	public static final UiSwitch AUTO_SHOP = KUUDRA_CHEATS.toggle("Auto Shop", false);
 	public static final UiSlider AUTO_SHOP_FIRST_CLICK_DELAY = KUUDRA_CHEATS.slider("Auto Shop First Click Delay", 1.0, 1500.0, 850.0, 1.0);
 	public static final UiSlider AUTO_SHOP_CLICK_DELAY = KUUDRA_CHEATS.slider("Auto Shop Click Delay", 1.0, 1000.0, 250.0, 1.0);
+	public static final UiSwitch AUTO_OPEN_KUUDRA_CHEST = KUUDRA_CHEATS.toggle("Auto Open Kuudra Chest", false);
+	public static final UiSlider AUTO_OPEN_KUUDRA_CHEST_FIRST_CLICK_DELAY = KUUDRA_CHEATS
+			.slider("Auto Open Kuudra Chest First Click Delay", 1.0, 5000.0, 1000.0, 1.0);
+	public static final UiSlider AUTO_OPEN_KUUDRA_CHEST_CLICK_DELAY = KUUDRA_CHEATS
+			.slider("Auto Open Kuudra Chest Click Delay", 1.0, 2000.0, 600.0, 1.0);
+	public static final UiButton AUTO_OPEN_KUUDRA_CHEST_START = KUUDRA_CHEATS
+			.button("Auto Open Kuudra Chest Start", "Start", button -> KuudraAutoOpenChest.start());
+	public static final UiButton AUTO_OPEN_KUUDRA_CHEST_STOP = KUUDRA_CHEATS
+			.button("Auto Open Kuudra Chest Stop", "Stop", button -> KuudraAutoOpenChest.stop());
 	public static final UiSwitch AUTO_TAP = KUUDRA_CHEATS.toggle("Auto Tap", false);
 	public static final UiSlider AUTO_TAP_AMOUNT = KUUDRA_CHEATS.slider("Auto Tap Amount", 1.0, 64.0, 32.0, 1.0);
 	public static final UiSwitch AUTO_PEARL_REFILL = KUUDRA_CHEATS.toggle("Auto Pearl Refill Kuudra", false);
@@ -482,12 +492,17 @@ public final class UiDefinitions {
 		AUTO_PEARL_KUUDRA_TIER.visibleWhen(AUTO_PEARL);
 		AUTO_PEARL_ROTATION_MULTIPLIER.visibleWhen(AUTO_PEARL);
 		AUTO_PEARL_INACCURACY.visibleWhen(AUTO_PEARL);
+		AUTO_PEARL_USE_ONLY_SKY.visibleWhen(AUTO_PEARL);
 		AUTO_PEARL_X.visibleWhen(() -> false);
 		AUTO_PEARL_Y.visibleWhen(() -> false);
 		AUTO_PEARL_MOVE.visibleWhen(AUTO_PEARL);
 		AUTO_PEARL_REFILL_EVERY_TICKS.visibleWhen(AUTO_PEARL_REFILL);
 		AUTO_SHOP_FIRST_CLICK_DELAY.visibleWhen(AUTO_SHOP);
 		AUTO_SHOP_CLICK_DELAY.visibleWhen(AUTO_SHOP);
+		AUTO_OPEN_KUUDRA_CHEST_FIRST_CLICK_DELAY.visibleWhen(AUTO_OPEN_KUUDRA_CHEST);
+		AUTO_OPEN_KUUDRA_CHEST_CLICK_DELAY.visibleWhen(AUTO_OPEN_KUUDRA_CHEST);
+		AUTO_OPEN_KUUDRA_CHEST_START.visibleWhen(AUTO_OPEN_KUUDRA_CHEST);
+		AUTO_OPEN_KUUDRA_CHEST_STOP.visibleWhen(AUTO_OPEN_KUUDRA_CHEST);
 		AUTO_TAP_AMOUNT.visibleWhen(AUTO_TAP);
 		AUTO_REND_ROTATION_MULTIPLIER.visibleWhen(AUTO_REND);
 		AUTO_REND_HYPERION.visibleWhen(AUTO_REND);

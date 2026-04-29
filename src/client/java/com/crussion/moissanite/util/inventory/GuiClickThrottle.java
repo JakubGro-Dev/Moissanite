@@ -43,7 +43,7 @@ public final class GuiClickThrottle {
 			return false;
 		}
 
-		clickSlotLikeUser(client, menu, slot);
+		clickSlotDirect(client, menu, slot);
 		nextAllowedClickMs = now + randomDelayMs(minDelayMs, maxDelayMs);
 		return true;
 	}
@@ -67,6 +67,10 @@ public final class GuiClickThrottle {
 			return;
 		}
 
+		client.gameMode.handleInventoryMouseClick(menu.containerId, slot, 0, ClickType.PICKUP, client.player);
+	}
+
+	private static void clickSlotDirect(Minecraft client, ChestMenu menu, int slot) {
 		client.gameMode.handleInventoryMouseClick(menu.containerId, slot, 0, ClickType.PICKUP, client.player);
 	}
 

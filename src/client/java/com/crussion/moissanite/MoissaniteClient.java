@@ -34,6 +34,7 @@ import com.crussion.moissanite.features.kuudra.KuudraCubeHpTag;
 import com.crussion.moissanite.features.kuudra.KuudraSupplyWaypoints;
 import com.crussion.moissanite.features.kuudra.KuudraAutoShop;
 import com.crussion.moissanite.features.kuudra.KuudraAutoTap;
+import com.crussion.moissanite.features.kuudra.KuudraAutoOpenChest;
 import com.crussion.moissanite.update.ModUpdater;
 
 public class MoissaniteClient implements ClientModInitializer {
@@ -67,6 +68,7 @@ public class MoissaniteClient implements ClientModInitializer {
 		KuudraSupplyWaypoints.init();
 		KuudraAutoShop.init();
 		KuudraAutoTap.init();
+		KuudraAutoOpenChest.init();
 		AutoRend_Reworked.init();
 		AlwaysSprint.init();
 		RenderImageOnScreen.init();

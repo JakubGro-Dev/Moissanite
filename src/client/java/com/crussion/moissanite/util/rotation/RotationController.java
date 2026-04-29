@@ -27,8 +27,8 @@ public final class RotationController {
 	private static final float PITCH_SPEED_MAX = 290.0f;
 	private static final float YAW_DEADZONE = 0.06f;
 	private static final float PITCH_DEADZONE = 0.05f;
-	private static final float DEFAULT_ROTATE_FINISH_YAW = 1.5f;
-	private static final float DEFAULT_ROTATE_FINISH_PITCH = 1.5f;
+	private static final float DEFAULT_ROTATE_FINISH_YAW = 0.2f;
+	private static final float DEFAULT_ROTATE_FINISH_PITCH = 0.2f;
 
 	private static boolean initialized;
 	private static float yawVelocity;

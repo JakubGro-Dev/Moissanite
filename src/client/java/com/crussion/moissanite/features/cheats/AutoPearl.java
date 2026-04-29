@@ -29,6 +29,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
@@ -705,6 +706,12 @@ public final class AutoPearl {
 	}
 
 	private static TimedThrowPlan selectPreferredPlan(Minecraft client, TimedThrowPlan skyPlan, TimedThrowPlan flatPlan) {
+		if (shouldUseOnlySky()) {
+			if (skyPlan != null && !isThrowPathBlocked(client, skyPlan.plan())) {
+				return skyPlan;
+			}
+			return null;
+		}
 		if (flatPlan != null && !isThrowPathBlocked(client, flatPlan.plan())) {
 			return flatPlan;
 		}
@@ -1011,6 +1018,12 @@ public final class AutoPearl {
 			resetSequence();
 			return;
 		}
+		Minecraft client = Minecraft.getInstance();
+		if (!refreshCurrentPlan(client, true)) {
+			sendDebug("WAIT_FOR_THROW_WINDOW: failed to refresh aim.");
+			resetSequence();
+			return;
+		}
 		if (currentThrowAtMs < 0L) {
 			sendDebug("WAIT_FOR_THROW_WINDOW: missing locked throw time.");
 			resetSequence();
@@ -1032,11 +1045,17 @@ public final class AutoPearl {
 		}
 		if (!stepStarted) {
 			Minecraft client = Minecraft.getInstance();
+			if (!refreshCurrentPlan(client, false)) {
+				sendDebug("THROW_PEARL: failed to refresh aim, cancelling sequence.");
+				resetSequence();
+				return;
+			}
 			if (isThrowPathBlocked(client, currentPlan)) {
 				sendDebug("THROW_PEARL: blocked path, cancelling sequence.");
 				resetSequence();
 				return;
 			}
+			applyAndSendRotation(client, currentPlan.yaw(), currentPlan.pitch());
 			stepStarted = true;
 			sendDebug("THROW_PEARL: direct use.");
 			boolean thrown = PlayerInputActions.useMainHandItemDirect();
@@ -1066,6 +1085,44 @@ public final class AutoPearl {
 
 		ItemStack held = client.player.getMainHandItem();
 		return held != null && !held.isEmpty() && held.is(Items.ENDER_PEARL);
+	}
+
+	private static boolean refreshCurrentPlan(Minecraft client, boolean updateThrowTime) {
+		if (client == null || client.player == null || currentPlan == null) {
+			return false;
+		}
+		Vec3 pearlStart = getPearlSpawnPos(client);
+		if (pearlStart == null) {
+			return false;
+		}
+		ThrowPlan refreshed = createThrowPlan(currentPlan.sky(), pearlStart, currentPlan.target());
+		if (refreshed == null) {
+			return false;
+		}
+		currentPlan = refreshed;
+		if (updateThrowTime) {
+			currentThrowAtMs = serverNowMs() + timeUntilThrowMs(refreshed.flightTimeMs());
+		}
+		return true;
+	}
+
+	private static void applyAndSendRotation(Minecraft client, float yaw, float pitch) {
+		if (client == null || client.player == null) {
+			return;
+		}
+		float wrappedYaw = Mth.wrapDegrees(yaw);
+		float clampedPitch = Mth.clamp(pitch, -90.0F, 90.0F);
+		client.player.setYRot(wrappedYaw);
+		client.player.setXRot(clampedPitch);
+		client.player.setYHeadRot(wrappedYaw);
+		client.player.setYBodyRot(wrappedYaw);
+		if (client.player.connection != null) {
+			client.player.connection.send(new ServerboundMovePlayerPacket.Rot(
+					wrappedYaw,
+					clampedPitch,
+					client.player.onGround(),
+					client.player.horizontalCollision));
+		}
 	}
 
 	private static boolean waitedAfterAction(int minimumTicks) {
@@ -1123,6 +1180,9 @@ public final class AutoPearl {
 		}
 		Minecraft client = Minecraft.getInstance();
 		if (client == null || client.font == null || client.getWindow() == null) {
+			return;
+		}
+		if (!ScoreboardAreaMatcher.isInArea(KUUDRA_HOLLOW)) {
 			return;
 		}
 
@@ -1231,6 +1291,10 @@ public final class AutoPearl {
 
 	private static boolean isGuiEnabled() {
 		return Boolean.TRUE.equals(UiDefinitions.AUTO_PEARL.get());
+	}
+
+	private static boolean shouldUseOnlySky() {
+		return Boolean.TRUE.equals(UiDefinitions.AUTO_PEARL_USE_ONLY_SKY.get());
 	}
 
 	private static String actionStatus(boolean success) {
@@ -1382,9 +1446,10 @@ public final class AutoPearl {
 		private static final double ONE_MINUS_DRAG = 1.0D - DRAG;
 		private static final double INV_ONE_MINUS_DRAG = 1.0D / ONE_MINUS_DRAG;
 		private static final double LOG_DRAG = Math.log(DRAG);
-		private static final double BASE_RADIUS = 0.5D;
-		private static final double MAX_RADIUS = 2.0D;
-		private static final double RADIUS_STEP = 0.25D;
+		private static final double BASE_RADIUS = 0.25D;
+		private static final double MAX_RADIUS = 0.75D;
+		private static final double RADIUS_STEP = 0.125D;
+		private static final double PRECISE_HIT_DIST_SQ = 0.02D * 0.02D;
 		private static final int REFINE_ROUNDS = 6;
 		private static final double REFINE_INIT_STEP = Math.toRadians(0.6D);
 		private static final double COARSE_SCAN_STEP = Math.toRadians(0.5D);
@@ -1498,7 +1563,7 @@ public final class AutoPearl {
 						radiusSq);
 				if (coarseScan != null) {
 					theta = coarseScan.theta;
-					if (coarseScan.sim.hit) {
+					if (coarseScan.sim.hit && coarseScan.sim.hitDistSq <= PRECISE_HIT_DIST_SQ) {
 						return coarseScan;
 					}
 				} else {
@@ -1523,15 +1588,11 @@ public final class AutoPearl {
 				best = better(best, lowerResult);
 				best = better(best, upperResult);
 				bestTheta = best.theta;
-				if (best.sim.hit && best.sim.hitXZDist2 <= 1.0E-6D) {
+				if (best.sim.hit && best.sim.hitDistSq <= PRECISE_HIT_DIST_SQ) {
 					return best;
 				}
 				step *= 0.5D;
 			}
-			if (best.sim.hit) {
-				return best;
-			}
-
 			RefineResult coarseSweep = sweepAround(
 					scratch,
 					bestTheta,
@@ -1550,7 +1611,7 @@ public final class AutoPearl {
 					uz,
 					radiusSq);
 			best = better(best, coarseSweep);
-			if (best.sim.hit) {
+			if (best.sim.hit && best.sim.hitDistSq <= PRECISE_HIT_DIST_SQ) {
 				return best;
 			}
 			if (allowFineSweep) {
@@ -1579,7 +1640,8 @@ public final class AutoPearl {
 		private static RefineResult sweepAround(Scratch scratch, double centerTheta, double sweepRange, double sweepStep,
 				double minTheta, double maxTheta, double horizontalDist, double startX, double startY, double startZ,
 				double targetX, double targetZ, double targetY, double ux, double uz, double radiusSq) {
-			RefineResult best = null;
+			RefineResult best = scratch.sweepBest;
+			clearResult(best);
 			int steps = (int) Math.ceil(sweepRange / sweepStep);
 			for (int step = 0; step <= steps; step++) {
 				double upperTheta = centerTheta + (step * sweepStep);
@@ -1587,8 +1649,10 @@ public final class AutoPearl {
 					RefineResult candidate = scratch.tmpPick();
 					evalTheta(candidate, candidate.sim, upperTheta, horizontalDist, startX, startY, startZ, targetX,
 							targetZ, targetY, ux, uz, radiusSq);
-					best = better(best, candidate);
-					if (best.sim.hit) {
+					if (better(best, candidate) == candidate) {
+						copyResult(best, candidate);
+					}
+					if (best.sim.hit && best.sim.hitDistSq <= PRECISE_HIT_DIST_SQ) {
 						return best;
 					}
 				}
@@ -1601,8 +1665,10 @@ public final class AutoPearl {
 					RefineResult candidate = scratch.tmpPick();
 					evalTheta(candidate, candidate.sim, lowerTheta, horizontalDist, startX, startY, startZ, targetX,
 							targetZ, targetY, ux, uz, radiusSq);
-					best = better(best, candidate);
-					if (best.sim.hit) {
+					if (better(best, candidate) == candidate) {
+						copyResult(best, candidate);
+					}
+					if (best.sim.hit && best.sim.hitDistSq <= PRECISE_HIT_DIST_SQ) {
 						return best;
 					}
 				}
@@ -1646,6 +1712,7 @@ public final class AutoPearl {
 			double prevX = startX;
 			double prevY = startY;
 			double prevZ = startZ;
+			double bestDistSq = Double.POSITIVE_INFINITY;
 			double bestCrossXZDist2 = Double.POSITIVE_INFINITY;
 			int planeCrossTick = -1;
 
@@ -1684,6 +1751,9 @@ public final class AutoPearl {
 						double deltaClosestZ = closestZ - targetZ;
 						double hitDistSq = (deltaClosestX * deltaClosestX) + (deltaClosestY * deltaClosestY)
 								+ (deltaClosestZ * deltaClosestZ);
+						if (hitDistSq < bestDistSq) {
+							bestDistSq = hitDistSq;
+						}
 
 						double hitXZDeltaX = closestX - targetX;
 						double hitXZDeltaZ = closestZ - targetZ;
@@ -1695,7 +1765,9 @@ public final class AutoPearl {
 						if (radiusSq > 0.0D && hitDistSq <= radiusSq) {
 							sim.hit = true;
 							sim.hitTick = tick;
+							sim.bestDistSq = bestDistSq;
 							sim.bestCrossXZDist2 = bestCrossXZDist2;
+							sim.hitDistSq = hitDistSq;
 							sim.hitXZDist2 = hitXZDist2;
 							sim.planeCrossTick = planeCrossTick;
 							return;
@@ -1710,7 +1782,9 @@ public final class AutoPearl {
 
 			sim.hit = false;
 			sim.hitTick = -1;
+			sim.bestDistSq = bestDistSq;
 			sim.bestCrossXZDist2 = bestCrossXZDist2;
+			sim.hitDistSq = Double.POSITIVE_INFINITY;
 			sim.hitXZDist2 = Double.POSITIVE_INFINITY;
 			sim.planeCrossTick = planeCrossTick;
 		}
@@ -1811,11 +1885,15 @@ public final class AutoPearl {
 				return candidate;
 			}
 
+			double currentDistSq = current.sim.hit ? current.sim.hitDistSq : current.sim.bestDistSq;
+			double candidateDistSq = candidate.sim.hit ? candidate.sim.hitDistSq : candidate.sim.bestDistSq;
+			int distCompare = Double.compare(currentDistSq, candidateDistSq);
+			if (distCompare != 0) {
+				return distCompare < 0 ? current : candidate;
+			}
+
 			boolean currentHit = current.sim.hit;
 			boolean candidateHit = candidate.sim.hit;
-			if (currentHit != candidateHit) {
-				return currentHit ? current : candidate;
-			}
 			if (currentHit) {
 				int xzCompare = Double.compare(current.sim.hitXZDist2, candidate.sim.hitXZDist2);
 				if (xzCompare != 0) {
@@ -1835,17 +1913,50 @@ public final class AutoPearl {
 		private static RefineResult globalCoarseScan(Scratch scratch, double minTheta, double maxTheta,
 				double horizontalDist, double startX, double startY, double startZ, double targetX, double targetZ,
 				double targetY, double ux, double uz, double radiusSq) {
-			RefineResult best = null;
+			RefineResult best = scratch.coarseBest;
+			clearResult(best);
 			for (double theta = minTheta; theta <= maxTheta + 1.0E-12D; theta += COARSE_SCAN_STEP) {
 				RefineResult candidate = scratch.tmpPick();
 				evalTheta(candidate, candidate.sim, theta, horizontalDist, startX, startY, startZ, targetX, targetZ,
 						targetY, ux, uz, radiusSq);
-				best = better(best, candidate);
-				if (best != null && best.sim.hit) {
+				if (better(best, candidate) == candidate) {
+					copyResult(best, candidate);
+				}
+				if (best != null && best.sim.hit && best.sim.hitDistSq <= PRECISE_HIT_DIST_SQ) {
 					return best;
 				}
 			}
 			return best;
+		}
+
+		private static void clearResult(RefineResult result) {
+			result.theta = 0.0D;
+			result.cos = 0.0D;
+			result.vx = 0.0D;
+			result.vy = 0.0D;
+			result.vz = 0.0D;
+			result.sim.hit = false;
+			result.sim.hitTick = -1;
+			result.sim.bestDistSq = Double.POSITIVE_INFINITY;
+			result.sim.bestCrossXZDist2 = Double.POSITIVE_INFINITY;
+			result.sim.hitDistSq = Double.POSITIVE_INFINITY;
+			result.sim.hitXZDist2 = Double.POSITIVE_INFINITY;
+			result.sim.planeCrossTick = -1;
+		}
+
+		private static void copyResult(RefineResult target, RefineResult source) {
+			target.theta = source.theta;
+			target.cos = source.cos;
+			target.vx = source.vx;
+			target.vy = source.vy;
+			target.vz = source.vz;
+			target.sim.hit = source.sim.hit;
+			target.sim.hitTick = source.sim.hitTick;
+			target.sim.bestDistSq = source.sim.bestDistSq;
+			target.sim.bestCrossXZDist2 = source.sim.bestCrossXZDist2;
+			target.sim.hitDistSq = source.sim.hitDistSq;
+			target.sim.hitXZDist2 = source.sim.hitXZDist2;
+			target.sim.planeCrossTick = source.sim.planeCrossTick;
 		}
 
 		private static double clamp(double value, double min, double max) {
@@ -1873,11 +1984,15 @@ public final class AutoPearl {
 			private final SimResult sim2 = new SimResult();
 			private final SimResult sim3 = new SimResult();
 			private final SimResult sim4 = new SimResult();
+			private final SimResult sim5 = new SimResult();
+			private final SimResult sim6 = new SimResult();
 			private final RefineResult r0 = new RefineResult(sim0);
 			private final RefineResult r1 = new RefineResult(sim1);
 			private final RefineResult r2 = new RefineResult(sim2);
 			private final RefineResult r3 = new RefineResult(sim3);
 			private final RefineResult r4 = new RefineResult(sim4);
+			private final RefineResult sweepBest = new RefineResult(sim5);
+			private final RefineResult coarseBest = new RefineResult(sim6);
 			private int pick;
 
 			private RefineResult tmpPick() {
@@ -1902,7 +2017,9 @@ public final class AutoPearl {
 		private static final class SimResult {
 			private boolean hit;
 			private int hitTick;
+			private double bestDistSq;
 			private double bestCrossXZDist2;
+			private double hitDistSq;
 			private double hitXZDist2;
 			private int planeCrossTick;
 		}
