@@ -5,6 +5,7 @@ import com.crussion.moissanite.util.chat.FeatureChat;
 import com.crussion.moissanite.util.kuudra.KuudraPhaseTracker;
 import com.crussion.moissanite.util.scoreboard.ScoreboardAreaMatcher;
 import com.crussion.moissanite.util.text.TextNormalizer;
+import com.crussion.moissanite.util.tick.TickTaskScheduler;
 
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientWorldEvents;
@@ -196,10 +197,7 @@ public final class KuudraNoPre {
 				}
 
 				if (!alert.isEmpty()) {
-					Minecraft mc = Minecraft.getInstance();
-					if (mc.player != null && mc.player.connection != null) {
-						mc.player.connection.sendCommand("pc " + alert);
-					}
+					sendPartyAlertNextTick(alert);
 				}
 			}
 			return;
@@ -219,5 +217,20 @@ public final class KuudraNoPre {
 
 	public static PickupSpot getPreSpot() {
 		return preSpot;
+	}
+
+	private static void sendPartyAlertNextTick(String alert) {
+		TickTaskScheduler.schedule(1, () -> {
+			if (!Boolean.TRUE.equals(UiDefinitions.NO_PRE.get())) {
+				return;
+			}
+			if (!ScoreboardAreaMatcher.isInArea("Kuudra's Hollow")) {
+				return;
+			}
+			Minecraft mc = Minecraft.getInstance();
+			if (mc.player != null && mc.player.connection != null) {
+				mc.player.connection.sendCommand("pc " + alert);
+			}
+		});
 	}
 }

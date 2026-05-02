@@ -37,6 +37,8 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.monster.MagmaCube;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -95,6 +97,8 @@ public final class AutoRend_Reworked {
 	private static final String PEARL_ID = "ENDER_PEARL";
 	private static final String TERMINATOR_ID = "TERMINATOR";
 	private static final String HYPERION_ID = "HYPERION";
+	private static final String BAD_ITEMS_REND_RESULT_TEXT = "BAD ITEMS";
+	private static final String BAD_ITEMS_MESSAGE = "Items are in bad slots.";
 
 	private static final double PEARL_TARGET_X = -101.0D;
 	private static final double PEARL_TARGET_Y = 6.0D;
@@ -156,6 +160,7 @@ public final class AutoRend_Reworked {
 			resetBackboneTracking();
 		});
 
+		FakeKeybinds.onKeyPress(UiDefinitions.AUTO_REND_DEBUG_TRIGGER_KEYBIND, AutoRend_Reworked::triggerDebugSequence);
 		ClientTickEvents.END_CLIENT_TICK.register(AutoRend_Reworked::handleClientTick);
 		WorldRenderEvents.END_MAIN.register(AutoRend_Reworked::renderActivationZones);
 		HudElementRegistry.attachElementBefore(
@@ -207,8 +212,8 @@ public final class AutoRend_Reworked {
 		startSequence(false);
 	}
 
-	private static void triggerKuudraDead() {
-		if (!Boolean.TRUE.equals(UiDefinitions.AUTO_REND_DEBUG.get())) {
+	public static void triggerDebugSequence() {
+		if (!Boolean.TRUE.equals(UiDefinitions.DEBUG.get()) || !Boolean.TRUE.equals(UiDefinitions.AUTO_REND_DEBUG.get())) {
 			return;
 		}
 
@@ -340,6 +345,12 @@ public final class AutoRend_Reworked {
 		if (!bypassWorldUseCheck && sequenceUsedThisWorld) {
 			return;
 		}
+		if (!requiredItemsAreInConfiguredSlots()) {
+			sequenceUsedThisWorld = true;
+			showBadItemsResult();
+			FeatureChat.sendPrefixed("Auto Rend", BAD_ITEMS_MESSAGE);
+			return;
+		}
 
 		sequenceSessionId++;
 		sequenceRunning = true;
@@ -395,23 +406,24 @@ public final class AutoRend_Reworked {
 			boolean swapped = HotbarItemSearch.swapHeldItem(slot);
 			sendAutoRendMessage("Swap to Bonemerang (slot " + slot + "): " + actionStatus(swapped));
 		}
-		if (isSwapReady(BONEMERANG_ID)) {
+		if (waitedAfterAction(SWAP_MIN_WAIT_TICKS)) {
 			enterStep(SequenceStep.USE_BONEMERANG);
 		}
 	}
-
+	
 	private static void handleUseBonemerang() {
 		if (!stepStarted) {
 			stepStarted = true;
 			boolean usedBonemerang = PlayerInputActions.rightClick();
 			sendAutoRendMessage("Right click Bonemerang: " + actionStatus(usedBonemerang));
 			if (usedBonemerang) {
-				armBackboneTracking();
+				armBackboneWait();
 			}
 		}
-
+		
+		startArmorSwapIfNeeded();
+		
 		if (waitedAfterAction(SWAP_MIN_WAIT_TICKS)) {
-			startArmorSwapIfNeeded();
 			enterStep(SequenceStep.SWAP_ATOMSPLIT);
 		}
 	}
@@ -463,7 +475,7 @@ public final class AutoRend_Reworked {
 			boolean swapped = HotbarItemSearch.swapHeldItem(slot);
 			sendAutoRendMessage("Swap to Endstone (slot " + slot + "): " + actionStatus(swapped));
 		}
-		if (isSwapReady(ENDSTONE_ID)) {
+		if (waitedAfterAction(SWAP_MIN_WAIT_TICKS)) {
 			enterStep(SequenceStep.USE_ENDSTONE);
 		}
 	}
@@ -490,7 +502,7 @@ public final class AutoRend_Reworked {
 			boolean swapped = HotbarItemSearch.swapHeldItem(slot);
 			sendAutoRendMessage("Swap back to Bonemerang (slot " + slot + "): " + actionStatus(swapped));
 		}
-		if (isSwapReady(BONEMERANG_ID)) {
+		if (waitedAfterAction(SWAP_MIN_WAIT_TICKS)) {
 			enterStep(SequenceStep.PULL_BONEMERANG);
 		}
 	}
@@ -502,7 +514,7 @@ public final class AutoRend_Reworked {
 			boolean swapped = HotbarItemSearch.swapHeldItem(slot);
 			sendAutoRendMessage("Swap to Terminator (slot " + slot + "): " + actionStatus(swapped));
 		}
-		if (isSwapReady(TERMINATOR_ID)) {
+		if (waitedAfterAction(SWAP_MIN_WAIT_TICKS)) {
 			enterStep(SequenceStep.PULL_TERMINATOR);
 		}
 	}
@@ -555,7 +567,7 @@ public final class AutoRend_Reworked {
 			sendAutoRendMessage("Swap to Pearls (slot " + slot + "): " + actionStatus(swapped));
 		}
 
-		if (isSwapReady(PEARL_ID)) {
+		if (waitedAfterAction(SWAP_MIN_WAIT_TICKS)) {
 			enterStep(SequenceStep.THROW_PEARL);
 		}
 	}
@@ -567,7 +579,7 @@ public final class AutoRend_Reworked {
 			boolean swapped = HotbarItemSearch.swapHeldItem(slot);
 			sendAutoRendMessage("Swap to Pearls (slot " + slot + "): " + actionStatus(swapped));
 		}
-		if (isSwapReady(PEARL_ID)) {
+		if (waitedAfterAction(SWAP_MIN_WAIT_TICKS)) {
 			enterStep(SequenceStep.THROW_PEARL);
 		}
 	}
@@ -583,10 +595,6 @@ public final class AutoRend_Reworked {
 			markRendWindowFinished();
 			resetSequence();
 		}
-	}
-
-	private static boolean isSwapReady(String itemId) {
-		return waitedAfterAction(SWAP_MIN_WAIT_TICKS) && HeldItemMatcher.heldMatchesSkyblockId(itemId);
 	}
 
 	private static boolean waitedAfterAction(int minimumTicks) {
@@ -632,6 +640,38 @@ public final class AutoRend_Reworked {
 				|| UiDefinitions.AUTO_REND_ATOMSPLIT.get() != -1
 				|| UiDefinitions.AUTO_REND_ENDSTONE.get() != -1
 				|| UiDefinitions.AUTO_REND_PEARLS.get() != -1;
+	}
+
+	private static boolean requiredItemsAreInConfiguredSlots() {
+		if (!slotMatchesSkyblockId(UiDefinitions.AUTO_REND_BONEMERANG.get().intValue(), BONEMERANG_ID)) {
+			return false;
+		}
+		if (!slotMatchesSkyblockId(UiDefinitions.AUTO_REND_ATOMSPLIT.get().intValue(), ATOMSPLIT_ID)) {
+			return false;
+		}
+		if (!slotMatchesSkyblockId(UiDefinitions.AUTO_REND_ENDSTONE.get().intValue(), ENDSTONE_ID)) {
+			return false;
+		}
+		if (Boolean.TRUE.equals(UiDefinitions.AUTO_REND_TERMINATOR_PULL.get())
+				&& !slotMatchesSkyblockId(UiDefinitions.AUTO_REND_TERMINATOR.get().intValue(), TERMINATOR_ID)) {
+			return false;
+		}
+		return !Boolean.TRUE.equals(UiDefinitions.AUTO_REND_AUTO_BACK_PEARL.get())
+				|| slotMatchesSkyblockId(UiDefinitions.AUTO_REND_PEARLS.get().intValue(), PEARL_ID);
+	}
+
+	private static boolean slotMatchesSkyblockId(int hotbarSlot, String itemId) {
+		if (!Inventory.isHotbarSlot(hotbarSlot)) {
+			return false;
+		}
+
+		Minecraft client = Minecraft.getInstance();
+		if (client == null || client.player == null) {
+			return false;
+		}
+
+		ItemStack stack = client.player.getInventory().getItem(hotbarSlot);
+		return HeldItemMatcher.stackMatchesSkyblockId(stack, itemId);
 	}
 
 	public static void scanItemSlots() {
@@ -731,12 +771,35 @@ public final class AutoRend_Reworked {
 		backboneReadyGameTime = -1L;
 		trackedBoneStand = null;
 		trackedBoneCandidates.clear();
-		seenBoneStandIds.clear();
 		boneThrowOrigin = new Vec3(client.player.getX(), client.player.getEyeY(), client.player.getZ());
 		boneThrowForward = normalizeOrNull(client.player.getLookAngle());
 		boneThrowPlayerPos = new Vec3(client.player.getX(), client.player.getY(), client.player.getZ());
-		captureExistingBoneStandIds(client);
+		snapshotExistingBoneStands(client);
 		sendAutoRendMessage("Backbone tracking armed.");
+	}
+
+	private static void armBackboneWait() {
+		if (isAutoBackboneDetectionEnabled()) {
+			armBackboneTracking();
+			return;
+		}
+		armManualBackboneTimer();
+	}
+
+	private static void armManualBackboneTimer() {
+		Minecraft client = Minecraft.getInstance();
+		if (client == null || client.player == null || client.level == null) {
+			return;
+		}
+
+		int airTicks = Math.max(0, UiDefinitions.AUTO_REND_BONEMERANG_AIR_TICKS.get().intValue());
+		resetBackboneTracking();
+		backboneReadyGameTime = client.level.getGameTime() + airTicks;
+		sendAutoRendMessage("Backbone timer armed for " + airTicks + " ticks.");
+	}
+
+	private static boolean isAutoBackboneDetectionEnabled() {
+		return Boolean.TRUE.equals(UiDefinitions.AUTO_REND_AUTO_BACKBONE_DETECTION.get());
 	}
 
 	private static void tickBackboneTracking(Minecraft client) {
@@ -792,15 +855,16 @@ public final class AutoRend_Reworked {
 		trackedBoneStand.prevHeadPos = trackedBoneStand.currHeadPos;
 	}
 
-	private static void captureExistingBoneStandIds(Minecraft client) {
+	private static void snapshotExistingBoneStands(Minecraft client) {
+		seenBoneStandIds.clear();
+
 		if (client == null || client.level == null) {
 			return;
 		}
 		for (Entity entity : client.level.entitiesForRendering()) {
-			if (!(entity instanceof ArmorStand stand) || !stand.isAlive() || !isBoneStand(stand)) {
-				continue;
+			if (entity instanceof ArmorStand) {
+				seenBoneStandIds.add(entity.getId());
 			}
-			seenBoneStandIds.add(stand.getId());
 		}
 	}
 
@@ -810,7 +874,7 @@ public final class AutoRend_Reworked {
 		}
 
 		for (Entity entity : client.level.entitiesForRendering()) {
-			if (!(entity instanceof ArmorStand stand) || !stand.isAlive() || !isBoneStand(stand)) {
+			if (!(entity instanceof ArmorStand stand) || !stand.isAlive()) {
 				continue;
 			}
 			int entityId = stand.getId();
@@ -988,7 +1052,20 @@ public final class AutoRend_Reworked {
 			return false;
 		}
 
-		AABB targetBox = boss.getBoundingBox().inflate(BONE_TRACK_HEAD_HALF_XZ, BONE_TRACK_HEAD_HALF_Y, BONE_TRACK_HEAD_HALF_XZ);
+		AABB targetBoundingBox = boss.getBoundingBox();
+		AABB movementBox = new AABB(
+				Math.min(tracked.prevHeadPos.x, tracked.currHeadPos.x),
+				Math.min(tracked.prevHeadPos.y, tracked.currHeadPos.y),
+				Math.min(tracked.prevHeadPos.z, tracked.currHeadPos.z),
+				Math.max(tracked.prevHeadPos.x, tracked.currHeadPos.x),
+				Math.max(tracked.prevHeadPos.y, tracked.currHeadPos.y),
+				Math.max(tracked.prevHeadPos.z, tracked.currHeadPos.z))
+				.inflate(4.0D);
+		if (!targetBoundingBox.intersects(movementBox)) {
+			return false;
+		}
+
+		AABB targetBox = targetBoundingBox.inflate(BONE_TRACK_HEAD_HALF_XZ, BONE_TRACK_HEAD_HALF_Y, BONE_TRACK_HEAD_HALF_XZ);
 		double segmentX = tracked.currHeadPos.x - tracked.prevHeadPos.x;
 		double segmentY = tracked.currHeadPos.y - tracked.prevHeadPos.y;
 		double segmentZ = tracked.currHeadPos.z - tracked.prevHeadPos.z;
@@ -1207,6 +1284,15 @@ public final class AutoRend_Reworked {
 		rendResultText = "";
 		rendResultColor = REND_RESULT_BAD_COLOR;
 		rendResultHudTicks = 0;
+	}
+
+	private static void showBadItemsResult() {
+		rendResultWindowActive = false;
+		rendResultGraceTicks = -1;
+		rendLastKuudraHp = -1;
+		rendResultText = BAD_ITEMS_REND_RESULT_TEXT;
+		rendResultColor = REND_RESULT_BAD_COLOR;
+		rendResultHudTicks = REND_RESULT_HUD_DURATION_TICKS;
 	}
 
 	private static void markRendWindowFinished() {

@@ -72,8 +72,6 @@ public final class KuudraAutoOpenChest {
 
 	private static boolean initialized;
 	private static boolean running;
-	private static boolean manualNoKeyReported;
-	private static boolean manualBlockedForCroesusMenu;
 	private static State state = State.IDLE;
 	private static int stateTicks;
 	private static int lastInteractTick;
@@ -113,8 +111,6 @@ public final class KuudraAutoOpenChest {
 			UiDefinitions.AUTO_OPEN_KUUDRA_CHEST.set(true);
 		}
 		resetRuntime();
-		manualNoKeyReported = false;
-		manualBlockedForCroesusMenu = false;
 		if (!hasInfernalKuudraKey(client)) {
 			sendMessage("No Infernal Kuudra Keys found.");
 			return;
@@ -132,12 +128,10 @@ public final class KuudraAutoOpenChest {
 	}
 
 	public static void stop() {
-		boolean blockManual = isCurrentCroesusScreen();
 		if (running) {
 			sendMessage("Stopped.");
 		}
 		resetRuntime();
-		manualBlockedForCroesusMenu = blockManual;
 	}
 
 	private static void handleClientTick(Minecraft client) {
@@ -151,15 +145,7 @@ public final class KuudraAutoOpenChest {
 		}
 
 		trackGuiForClickDelay(client);
-		if (!isCroesusMenu(client)) {
-			manualBlockedForCroesusMenu = false;
-		}
-		if (hasInfernalKuudraKey(client)) {
-			manualNoKeyReported = false;
-		}
-
 		if (!running) {
-			handleManualCroesusOpen(client);
 			return;
 		}
 		if (!hasInfernalKuudraKey(client)) {
@@ -182,27 +168,6 @@ public final class KuudraAutoOpenChest {
 			case WAIT_AFTER_PURCHASE -> handleWaitAfterPurchase(client);
 			case IDLE -> enterState(State.OPEN_CROESUS);
 		}
-	}
-
-	private static void handleManualCroesusOpen(Minecraft client) {
-		if (!isCroesusMenu(client)) {
-			return;
-		}
-		if (manualBlockedForCroesusMenu) {
-			return;
-		}
-		if (!hasInfernalKuudraKey(client)) {
-			if (!manualNoKeyReported) {
-				sendMessage("No Infernal Kuudra Keys found.");
-				manualNoKeyReported = true;
-				manualBlockedForCroesusMenu = true;
-			}
-			return;
-		}
-		running = true;
-		clearChestPlan();
-		enterState(State.SCAN_CROESUS);
-		handleScanCroesus(client);
 	}
 
 	private static void handleOpenCroesus(Minecraft client) {
@@ -752,12 +717,10 @@ public final class KuudraAutoOpenChest {
 	}
 
 	private static void stopInternal(String reason) {
-		boolean blockManual = isCurrentCroesusScreen();
 		if (reason != null && !reason.isBlank()) {
 			sendMessage(reason);
 		}
 		resetRuntime();
-		manualBlockedForCroesusMenu = blockManual;
 	}
 
 	private static void resetRuntime() {
@@ -788,11 +751,6 @@ public final class KuudraAutoOpenChest {
 
 	private static void sendMessage(String text) {
 		FeatureChat.sendPrefixed(FEATURE_NAME, text);
-	}
-
-	private static boolean isCurrentCroesusScreen() {
-		Minecraft client = Minecraft.getInstance();
-		return client != null && isCroesusMenu(client);
 	}
 
 	private record ChestTarget(int page, int slot) {

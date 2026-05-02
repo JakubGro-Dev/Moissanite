@@ -1,7 +1,5 @@
 package com.crussion.moissanite.util.rotation;
 
-import com.crussion.moissanite.definitions.UiDefinitions;
-
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
@@ -10,7 +8,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 
 public final class RotationController {
-	private static final Identifier ROTATE_DRIVER_HUD_ID = Identifier.fromNamespaceAndPath("moissanite", "autorend_rotate_driver");
+	private static final Identifier ROTATE_DRIVER_HUD_ID = Identifier.fromNamespaceAndPath("moissanite", "rotation_driver");
 	private static final long RENDER_FALLBACK_NS = 120_000_000L;
 	private static final float TICK_DT_SECONDS = 1.0f / 20.0f;
 	private static final float YAW_SPRING_MIN = 44.0f;
@@ -27,6 +25,7 @@ public final class RotationController {
 	private static final float PITCH_SPEED_MAX = 290.0f;
 	private static final float YAW_DEADZONE = 0.06f;
 	private static final float PITCH_DEADZONE = 0.05f;
+	private static final float DEFAULT_ROTATION_MULTIPLIER = 1.0f;
 	private static final float DEFAULT_ROTATE_FINISH_YAW = 0.2f;
 	private static final float DEFAULT_ROTATE_FINISH_PITCH = 0.2f;
 
@@ -38,7 +37,7 @@ public final class RotationController {
 	private static boolean rotateTaskActive;
 	private static float rotateTargetYaw;
 	private static float rotateTargetPitch;
-	private static float rotateTaskMultiplier = 1.0f;
+	private static float rotateTaskMultiplier = DEFAULT_ROTATION_MULTIPLIER;
 	private static float rotateFinishYaw = DEFAULT_ROTATE_FINISH_YAW;
 	private static float rotateFinishPitch = DEFAULT_ROTATE_FINISH_PITCH;
 	private static long lastRotateStepNanos;
@@ -90,7 +89,7 @@ public final class RotationController {
 	}
 
 	public static boolean rotateYawPitch(double yaw, double pitch) {
-		return rotateYawPitch(yaw, pitch, rotationMultiplier(), DEFAULT_ROTATE_FINISH_YAW, DEFAULT_ROTATE_FINISH_PITCH);
+		return rotateYawPitch(yaw, pitch, DEFAULT_ROTATION_MULTIPLIER, DEFAULT_ROTATE_FINISH_YAW, DEFAULT_ROTATE_FINISH_PITCH);
 	}
 
 	public static boolean rotateYawPitch(double yaw, double pitch, double multiplier) {
@@ -289,17 +288,9 @@ public final class RotationController {
 		return t * t * (3.0f - (2.0f * t));
 	}
 
-	private static float rotationMultiplier() {
-		Double configured = UiDefinitions.AUTO_REND_ROTATION_MULTIPLIER.get();
-		if (configured == null || !Double.isFinite(configured)) {
-			return 1.0f;
-		}
-		return sanitizeRotationMultiplier(configured);
-	}
-
 	private static float sanitizeRotationMultiplier(double multiplier) {
 		if (!Double.isFinite(multiplier)) {
-			return 1.0f;
+			return DEFAULT_ROTATION_MULTIPLIER;
 		}
 		return (float) Mth.clamp(multiplier, 0.0, 2.0);
 	}
@@ -316,6 +307,7 @@ public final class RotationController {
 		pitchVelocity = 0.0f;
 		yawCarry = 0.0f;
 		pitchCarry = 0.0f;
+		rotateTaskMultiplier = DEFAULT_ROTATION_MULTIPLIER;
 		rotateFinishYaw = DEFAULT_ROTATE_FINISH_YAW;
 		rotateFinishPitch = DEFAULT_ROTATE_FINISH_PITCH;
 		lastRotateStepNanos = 0L;

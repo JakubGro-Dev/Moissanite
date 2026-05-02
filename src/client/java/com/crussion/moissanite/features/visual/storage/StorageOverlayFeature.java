@@ -135,7 +135,6 @@ public final class StorageOverlayFeature {
 	public static void onChestContentUpdate() {
 		if (!isEnabled())
 			return;
-		LOGGER.info("[onChestContentUpdate] currentHandler={}", currentHandler);
 		rememberContent(currentHandler);
 	}
 

@@ -398,6 +398,8 @@ public final class UiDefinitions {
 			.toggle("Auto Experiments Get Max XP", false);
 	public static final UiNumber AUTO_EXPERIMENTS_ENCHANTING_LEVEL = CHEATS_AUTO_EXPERIMENTATION
 			.number("Auto Enchanting Level", 1, 60, 60);
+	public static final UiNumber AUTO_EXPERIMENTS_MACRO_UI_CLICK_DELAY = CHEATS_AUTO_EXPERIMENTATION
+			.number("Auto Enchanting UI Click Delay MS", 1, 1000, 200);
 	public static final UiNumber AUTO_EXPERIMENTS_SUPERPAIRS_CLICK_DELAY = CHEATS_AUTO_EXPERIMENTATION
 			.number("Auto Enchanting Superpairs Click Delay MS", 0, 10000, 1200);
 	public static final UiNumber AUTO_EXPERIMENTS_SUPERPAIRS_AFTER_PAIR_DELAY = CHEATS_AUTO_EXPERIMENTATION
@@ -405,7 +407,7 @@ public final class UiDefinitions {
 	public static final UiNumber AUTO_EXPERIMENTS_SUPERPAIRS_PAIR_CLAIMS = CHEATS_AUTO_EXPERIMENTATION
 			.number("Auto Enchanting Superpairs Pair Claims", 1, 20, 3);
 	public static final UiButton AUTO_EXPERIMENTS_MACRO_START = CHEATS_AUTO_EXPERIMENTATION
-			.button("Auto Enchanting Start", "Start", button -> AutoExperimentMacro.start());
+			.button("Auto Enchanting Start (BUGGED)", "Start", button -> AutoExperimentMacro.start());
 	public static final UiButton AUTO_EXPERIMENTS_MACRO_STOP = CHEATS_AUTO_EXPERIMENTATION
 			.button("Auto Enchanting Stop", "Stop", button -> AutoExperimentMacro.stop());
 
@@ -448,8 +450,11 @@ public final class UiDefinitions {
 	public static final UiSlider AUTO_PEARL_REFILL_EVERY_TICKS = KUUDRA_CHEATS.slider("Auto Pearl Refill Every X Ticks",
 			1.0, 20.0, 5.0, 1.0);
 	public static final UiSwitch AUTO_REND = KUUDRA_CHEATS.toggle("Auto Rend", false);
-	public static final UiSwitch AUTO_REND_AUTO_BACK_PEARL = KUUDRA_CHEATS.toggle("Auto Back Pearl", true);
+	public static final UiSwitch AUTO_REND_AUTO_BACK_PEARL = KUUDRA_CHEATS.toggle("Auto Back Pearl", false);
 	public static final UiSwitch AUTO_REND_TERMINATOR_PULL = KUUDRA_CHEATS.toggle("Terminator Pull", false);
+	public static final UiSwitch AUTO_REND_AUTO_BACKBONE_DETECTION = KUUDRA_CHEATS.toggle("Auto Backbone Detection", true);
+	public static final UiSlider AUTO_REND_BONEMERANG_AIR_TICKS = KUUDRA_CHEATS.slider("Bonemerang In Air Ticks",
+			0.0, 80.0, 21.0, 1.0);
 	public static final UiSlider AUTO_REND_ROTATION_MULTIPLIER = KUUDRA_CHEATS.slider("Rotation Multiplier", 0.1, 2.0,
 			1.0, 0.1);
 	public static final UiSlider AUTO_REND_HYPERION = KUUDRA_CHEATS.slider("Hyperion", -1.0, 9.0, -1.0, 1.0);
@@ -488,6 +493,9 @@ public final class UiDefinitions {
 		AUTO_DIRECTION_AUTO_REAPER.visibleWhen(AUTO_DIRECTION);
 		AUTO_REND_AUTO_BACK_PEARL.visibleWhen(AUTO_REND);
 		AUTO_REND_TERMINATOR_PULL.visibleWhen(AUTO_REND);
+		AUTO_REND_AUTO_BACKBONE_DETECTION.visibleWhen(AUTO_REND);
+		AUTO_REND_BONEMERANG_AIR_TICKS.visibleWhen(
+				() -> Boolean.TRUE.equals(AUTO_REND.get()) && !Boolean.TRUE.equals(AUTO_REND_AUTO_BACKBONE_DETECTION.get()));
 		AUTO_PEARL_TALISMAN_TIER.visibleWhen(AUTO_PEARL);
 		AUTO_PEARL_KUUDRA_TIER.visibleWhen(AUTO_PEARL);
 		AUTO_PEARL_ROTATION_MULTIPLIER.visibleWhen(AUTO_PEARL);
@@ -536,12 +544,16 @@ public final class UiDefinitions {
 	public static final UiSwitch DEBUG = DEBUG_SECTION.toggle("Debug", false);
 	public static final UiSwitch AUTO_PEARL_DEBUG = DEBUG_SECTION.toggle("Auto Pearl", false);
 	public static final UiSwitch AUTO_REND_DEBUG = DEBUG_SECTION.toggle("Auto Rend", false);
+	public static final UiKeybind AUTO_REND_DEBUG_TRIGGER_KEYBIND = DEBUG_SECTION.keybind("Trigger Auto Rend",
+			InputConstants.UNKNOWN.getValue());
 	public static final UiSwitch ENCHANTING_MACRO_DEBUG = DEBUG_SECTION.toggle("Enchanting Macro", false);
 
 	// Visibilities
 	static {
 		AUTO_PEARL_DEBUG.visibleWhen(DEBUG);
 		AUTO_REND_DEBUG.visibleWhen(DEBUG);
+		AUTO_REND_DEBUG_TRIGGER_KEYBIND.visibleWhen(
+				() -> Boolean.TRUE.equals(DEBUG.get()) && Boolean.TRUE.equals(AUTO_REND_DEBUG.get()));
 		ENCHANTING_MACRO_DEBUG.visibleWhen(DEBUG);
 	}
 

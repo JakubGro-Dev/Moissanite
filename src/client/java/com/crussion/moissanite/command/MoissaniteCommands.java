@@ -11,6 +11,7 @@ import com.crussion.moissanite.features.cheats.AutoRendHelper;
 import com.crussion.moissanite.update.ModUpdater;
 import com.crussion.moissanite.ui.UiEntrypoints;
 import com.crussion.moissanite.ui.navigation.ScreenIds;
+import com.crussion.moissanite.util.rotation.RotationController;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
@@ -91,22 +92,22 @@ public final class MoissaniteCommands {
 	}
 
 	private static int rotateXYZ(FabricClientCommandSource source, double x, double y, double z) {
-		source.getClient().execute(() -> AutoRendHelper.Rotate(x, y, z));
+		source.getClient().execute(() -> RotationController.rotateTo(x, y, z));
 		return 1;
 	}
 
 	private static int rotateXYZWithMultiplier(FabricClientCommandSource source, double x, double y, double z, double multiplier) {
-		source.getClient().execute(() -> AutoRendHelper.Rotate(x, y, z, multiplier));
+		source.getClient().execute(() -> RotationController.rotateTo(x, y, z, multiplier));
 		return 1;
 	}
 
 	private static int rotateYawPitch(FabricClientCommandSource source, double yaw, double pitch) {
-		source.getClient().execute(() -> AutoRendHelper.Rotate(yaw, pitch));
+		source.getClient().execute(() -> RotationController.rotateYawPitch(yaw, pitch));
 		return 1;
 	}
 
 	private static int rotateYawPitchWithMultiplier(FabricClientCommandSource source, double yaw, double pitch, double multiplier) {
-		source.getClient().execute(() -> AutoRendHelper.RotateYawPitch(yaw, pitch, multiplier));
+		source.getClient().execute(() -> RotationController.rotateYawPitch(yaw, pitch, multiplier));
 		return 1;
 	}
 

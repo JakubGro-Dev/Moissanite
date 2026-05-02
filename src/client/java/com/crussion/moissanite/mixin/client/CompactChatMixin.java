@@ -58,6 +58,9 @@ public abstract class CompactChatMixin {
 	@Unique
 	private String moissanite$previousMessage;
 
+	@Unique
+	private String moissanite$pendingDuplicateRemoval;
+
 	@ModifyVariable(
 			method = "addMessage(Lnet/minecraft/network/chat/Component;Lnet/minecraft/network/chat/MessageSignature;Lnet/minecraft/client/GuiMessageTag;)V",
 			at = @At("HEAD"),
@@ -70,9 +73,11 @@ public abstract class CompactChatMixin {
 			moissanite$lastCompactEnabled = compactEnabled;
 			moissanite$messages.clear();
 			moissanite$previousMessage = null;
+			moissanite$pendingDuplicateRemoval = null;
 		}
 
 		if (!compactEnabled || component == null) {
+			moissanite$pendingDuplicateRemoval = null;
 			return component;
 		}
 
@@ -97,7 +102,28 @@ public abstract class CompactChatMixin {
 		}
 
 		MutableComponent mutableMessage = component.copy();
+		moissanite$pendingDuplicateRemoval = message;
 
+		MutableComponent occurrencesText = MoissaniteOccurrenceContent.create(tracker.occurrences())
+				.setStyle(MOISSANITE_OCCURRENCE_STYLE);
+
+		return mutableMessage.append(occurrencesText);
+	}
+
+	@Inject(
+			method = "addMessage(Lnet/minecraft/network/chat/Component;Lnet/minecraft/network/chat/MessageSignature;Lnet/minecraft/client/GuiMessageTag;)V",
+			at = @At("TAIL")
+	)
+	private void moissanite$removeCompactedDuplicate(Component component, MessageSignature signature, GuiMessageTag tag,
+			CallbackInfo ci) {
+		String message = moissanite$pendingDuplicateRemoval;
+		moissanite$pendingDuplicateRemoval = null;
+		if (message == null) {
+			return;
+		}
+
+		boolean skippedNewest = false;
+		boolean removedOlderDuplicate = false;
 		ListIterator<GuiMessage> iterator = allMessages.listIterator();
 
 		while (iterator.hasNext()) {
@@ -113,22 +139,26 @@ public abstract class CompactChatMixin {
 			String content = moissanite$stripIgnoredComponents(contentWithoutOccurrences);
 
 			if (content.equals(message)) {
+				if (!skippedNewest) {
+					skippedNewest = true;
+					continue;
+				}
 				iterator.remove();
-				moissanite$refreshTrimmedMessagesPreservingScroll();
+				removedOlderDuplicate = true;
 				break;
 			}
 		}
 
-		MutableComponent occurrencesText = MoissaniteOccurrenceContent.create(tracker.occurrences())
-				.setStyle(MOISSANITE_OCCURRENCE_STYLE);
-
-		return mutableMessage.append(occurrencesText);
+		if (removedOlderDuplicate) {
+			moissanite$refreshTrimmedMessagesPreservingScroll();
+		}
 	}
 
 	@Inject(method = "clearMessages", at = @At("HEAD"))
 	private void moissanite$clearCompactChat(boolean clearHistory, CallbackInfo ci) {
 		moissanite$messages.clear();
 		moissanite$previousMessage = null;
+		moissanite$pendingDuplicateRemoval = null;
 	}
 
 	@Unique
