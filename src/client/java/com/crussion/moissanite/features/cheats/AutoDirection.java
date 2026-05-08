@@ -26,6 +26,7 @@ public final class AutoDirection {
 	private static final double DPS_Y_MIN = 5.9D;
 	private static final double DPS_Y_MAX = 6.1D;
 	private static final double KUUDRA_AIM_MAX_Y = 33.0D;
+	private static final double KUUDRA_AIM_LEFT_YAW_OFFSET_DEGREES = 2.0D;
 	private static final float HEALTH_MIN = 24_900.0F;
 	private static final float HEALTH_MAX = 100_000.0F; // FROM 25_000.0F
 	private static boolean initialized;
@@ -208,11 +209,22 @@ public final class AutoDirection {
 		if (target == null) {
 			return false;
 		}
-		return RotationController.rotateTo(
-				target.x,
-				target.y,
-				target.z,
-				UiDefinitions.AUTO_DIRECTION_ROTATION_MULTIPLIER.get());
+
+		Minecraft client = Minecraft.getInstance();
+		if (client == null || client.player == null) {
+			return false;
+		}
+
+		double dx = target.x - client.player.getX();
+		double dy = target.y - client.player.getEyeY();
+		double dz = target.z - client.player.getZ();
+		double horizontal = Math.sqrt(dx * dx + dz * dz);
+		double yaw = Math.toDegrees(Math.atan2(dz, dx)) - 90.0D - KUUDRA_AIM_LEFT_YAW_OFFSET_DEGREES;
+		double pitch = -Math.toDegrees(Math.atan2(dy, horizontal));
+		return RotationController.rotateYawPitch(
+				yaw,
+				pitch,
+				UiDefinitions.AUTO_DIRECTION_AIM_AT_KUUDRA_ROTATION_MULTIPLIER.get());
 	}
 
 	private static Vec3 getClosestHorizontalFaceCenter(MagmaCube kuudra) {

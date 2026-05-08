@@ -62,11 +62,25 @@ public final class UiDefinitions {
 	public static final UiSwitch STRUCTURE_SCANNER = MINING_STRUCTURE_SCANNER.toggle("Structure Scanner", false);
 	public static final UiSwitch STRUCTURE_SCANNER_DRAGON_LAIR = MINING_STRUCTURE_SCANNER.toggle("Dragon Lair", false);
 	public static final UiSwitch STRUCTURE_SCANNER_MINES_OF_DIVAN = MINING_STRUCTURE_SCANNER.toggle("Mines Of Divan", false);
+	public static final UiSwitch STRUCTURE_SCANNER_BLUE_PRECURSOR_CITY = MINING_STRUCTURE_SCANNER.toggle("Precursor City", false);
+	public static final UiSwitch STRUCTURE_SCANNER_GOBLIN_KING = MINING_STRUCTURE_SCANNER.toggle("Goblin King", false);
+	public static final UiSwitch STRUCTURE_SCANNER_GOBLIN_QUEEN = MINING_STRUCTURE_SCANNER.toggle("Goblin Queen", false);
+	public static final UiSwitch STRUCTURE_SCANNER_JUNGLE_TEMPLE = MINING_STRUCTURE_SCANNER.toggle("Jungle Temple", false);
+	public static final UiSwitch STRUCTURE_SCANNER_GROTTO = MINING_STRUCTURE_SCANNER.toggle("Grotto", false);
+	public static final UiSwitch STRUCTURE_SCANNER_CORLEONE = MINING_STRUCTURE_SCANNER.toggle("Corleone", false);
+	public static final UiSwitch STRUCTURE_SCANNER_BAL = MINING_STRUCTURE_SCANNER.toggle("Bal", false);
 
 	// Visibilities
 	static {
 		STRUCTURE_SCANNER_DRAGON_LAIR.visibleWhen(STRUCTURE_SCANNER);
 		STRUCTURE_SCANNER_MINES_OF_DIVAN.visibleWhen(STRUCTURE_SCANNER);
+		STRUCTURE_SCANNER_BLUE_PRECURSOR_CITY.visibleWhen(STRUCTURE_SCANNER);
+		STRUCTURE_SCANNER_GOBLIN_KING.visibleWhen(STRUCTURE_SCANNER);
+		STRUCTURE_SCANNER_GOBLIN_QUEEN.visibleWhen(STRUCTURE_SCANNER);
+		STRUCTURE_SCANNER_JUNGLE_TEMPLE.visibleWhen(STRUCTURE_SCANNER);
+		STRUCTURE_SCANNER_GROTTO.visibleWhen(STRUCTURE_SCANNER);
+		STRUCTURE_SCANNER_CORLEONE.visibleWhen(STRUCTURE_SCANNER);
+		STRUCTURE_SCANNER_BAL.visibleWhen(STRUCTURE_SCANNER);
 	}
 
 	// Dungeons
@@ -448,6 +462,8 @@ public final class UiDefinitions {
 	public static final UiSwitch AUTO_DIRECTION_AIM_AT_KUUDRA = KUUDRA_CHEATS.toggle("Aim at Kuudra", false);
 	public static final UiSlider AUTO_DIRECTION_AIM_AT_KUUDRA_TICKS = KUUDRA_CHEATS.slider(
 			"Aim at Kuudra Ticks", 1.0, 100.0, 30.0, 1.0);
+	public static final UiSlider AUTO_DIRECTION_AIM_AT_KUUDRA_ROTATION_MULTIPLIER = KUUDRA_CHEATS.slider(
+			"Aim at Kuudra Rotation Multiplier", 0.1, 2.0, 0.5, 0.1);
 	public static final UiSwitch AUTO_DIRECTION_AUTO_HYPERION = KUUDRA_CHEATS.toggle("Auto Hyperion", false);
 	public static final UiSwitch AUTO_DIRECTION_AUTO_REAPER = KUUDRA_CHEATS.toggle("Auto Reaper", false);
 	public static final UiSwitch AUTO_SWAP_ARMOR_RAG = KUUDRA_CHEATS.toggle("Auto Swap Armor After Rag", false);
