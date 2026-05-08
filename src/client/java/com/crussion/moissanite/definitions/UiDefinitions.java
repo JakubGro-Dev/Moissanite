@@ -590,6 +590,7 @@ public final class UiDefinitions {
 
 	// Bindables
 	public static final UiSwitch UPDATE_AUTO_CHECK_ON_JOIN = UPDATE_SECTION.toggle("Auto Check On Server Join", true);
+	public static final UiSwitch UPDATE_AUTO_DOWNLOAD_LATEST = UPDATE_SECTION.toggle("Auto Download Latest Update", true);
 	public static final UiButton UPDATE_CHECK = UPDATE_SECTION.button("Check For Updates", "Check",
 			button -> ModUpdater.checkForUpdatesAsync(ModUpdater.CheckTrigger.MANUAL));
 	public static final UiButton UPDATE_DOWNLOAD = UPDATE_SECTION.button("Download Update", "Click to Download",

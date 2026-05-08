@@ -42,6 +42,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 
 public final class ModUpdater {
 	public enum CheckTrigger {
@@ -141,7 +144,12 @@ public final class ModUpdater {
 				}
 
 				if (result.updateAvailable()) {
-					sendUpdateAvailableMessage(result.latestRelease());
+					if (shouldAutoDownload(trigger)) {
+						sendAutoDownloadStartingMessage(result.latestRelease());
+						downloadLatestAsync(trigger);
+					} else {
+						sendUpdateAvailableMessage(result.latestRelease());
+					}
 				} else if (trigger != CheckTrigger.AUTO_JOIN) {
 					sendInfo("You are up to date (" + CURRENT_VERSION_TEXT + ").");
 				}
@@ -228,24 +236,55 @@ public final class ModUpdater {
 
 	private static void launchWindowsInstaller(PendingInstall install) throws IOException {
 		Path script = install.downloadedFile().getParent().resolve("install-update-" + System.currentTimeMillis() + ".cmd");
+		Path log = install.downloadedFile().getParent().resolve("install-update.log");
 		String currentPath = install.currentJar() == null ? install.targetJar().toString() : install.currentJar().toString();
 		String content = """
 				@echo off
 				setlocal
-				timeout /t 2 /nobreak >nul
 				set "DOWNLOAD=%s"
 				set "TARGET=%s"
 				set "CURRENT=%s"
-				if not exist "%s" mkdir "%s"
-				copy /Y "%%DOWNLOAD%%" "%%TARGET%%" >nul && (if /I not "%%CURRENT%%"=="%%TARGET%%" if exist "%%CURRENT%%" del /F /Q "%%CURRENT%%" >nul)
-				if exist "%%DOWNLOAD%%" del /F /Q "%%DOWNLOAD%%" >nul
-				del /F /Q "%%~f0" >nul
+				set "MODSDIR=%s"
+				set "LOG=%s"
+				echo Installing Moissanite update at %%DATE%% %%TIME%% > "%%LOG%%"
+				if not exist "%%MODSDIR%%" mkdir "%%MODSDIR%%" >> "%%LOG%%" 2>&1
+				set /a COPY_ATTEMPT=0
+				:copy_retry
+				set /a COPY_ATTEMPT+=1
+				copy /Y "%%DOWNLOAD%%" "%%TARGET%%" >> "%%LOG%%" 2>&1
+				if errorlevel 1 goto copy_wait
+				goto copy_done
+				:copy_wait
+				if %%COPY_ATTEMPT%% GEQ 60 goto copy_failed
+				timeout /t 1 /nobreak >nul
+				goto copy_retry
+				:copy_done
+				if /I "%%CURRENT%%"=="%%TARGET%%" goto cleanup_download
+				if not exist "%%CURRENT%%" goto cleanup_download
+				set /a DELETE_ATTEMPT=0
+				:delete_retry
+				set /a DELETE_ATTEMPT+=1
+				del /F /Q "%%CURRENT%%" >> "%%LOG%%" 2>&1
+				if not exist "%%CURRENT%%" goto cleanup_download
+				if %%DELETE_ATTEMPT%% GEQ 60 goto delete_failed
+				timeout /t 1 /nobreak >nul
+				goto delete_retry
+				:delete_failed
+				echo Old mod jar could not be removed: "%%CURRENT%%" >> "%%LOG%%"
+				:cleanup_download
+				if exist "%%DOWNLOAD%%" del /F /Q "%%DOWNLOAD%%" >> "%%LOG%%" 2>&1
+				echo Moissanite update installer finished. >> "%%LOG%%"
+				goto done
+				:copy_failed
+				echo Failed to copy update after %%COPY_ATTEMPT%% attempts. >> "%%LOG%%"
+				:done
+				del /F /Q "%%~f0" >nul 2>&1
 				""".formatted(
 				escapeWindowsValue(install.downloadedFile().toString()),
 				escapeWindowsValue(install.targetJar().toString()),
 				escapeWindowsValue(currentPath),
 				escapeWindowsValue(install.modsDir().toString()),
-				escapeWindowsValue(install.modsDir().toString())
+				escapeWindowsValue(log.toString())
 		);
 		Files.writeString(script, content, StandardCharsets.UTF_8);
 		new ProcessBuilder("cmd.exe", "/c", script.toString()).start();
@@ -253,25 +292,53 @@ public final class ModUpdater {
 
 	private static void launchPosixInstaller(PendingInstall install) throws IOException {
 		Path script = install.downloadedFile().getParent().resolve("install-update-" + System.currentTimeMillis() + ".sh");
+		Path log = install.downloadedFile().getParent().resolve("install-update.log");
 		String currentPath = install.currentJar() == null ? install.targetJar().toString() : install.currentJar().toString();
 		String content = """
 				#!/bin/sh
-				sleep 2
-				mkdir -p %s
-				if cp -f %s %s; then
-				  if [ %s != %s ] && [ -f %s ]; then rm -f %s; fi
+				DOWNLOAD=%s
+				TARGET=%s
+				CURRENT=%s
+				MODSDIR=%s
+				LOG=%s
+				echo "Installing Moissanite update at $(date)" > "$LOG"
+				mkdir -p "$MODSDIR" >> "$LOG" 2>&1
+				attempt=0
+				installed=0
+				while [ "$attempt" -lt 60 ]; do
+				  if cp -f "$DOWNLOAD" "$TARGET" >> "$LOG" 2>&1; then
+				    installed=1
+				    break
+				  fi
+				  attempt=$((attempt + 1))
+				  sleep 1
+				done
+				if [ "$installed" != "1" ]; then
+				  echo "Failed to copy update after $attempt attempts." >> "$LOG"
+				  rm -f "$0"
+				  exit 1
 				fi
-				rm -f %s
+				if [ "$CURRENT" != "$TARGET" ] && [ -f "$CURRENT" ]; then
+				  attempt=0
+				  while [ "$attempt" -lt 60 ] && [ -f "$CURRENT" ]; do
+				    rm -f "$CURRENT" >> "$LOG" 2>&1 || true
+				    [ ! -f "$CURRENT" ] && break
+				    attempt=$((attempt + 1))
+				    sleep 1
+				  done
+				  if [ -f "$CURRENT" ]; then
+				    echo "Old mod jar could not be removed: $CURRENT" >> "$LOG"
+				  fi
+				fi
+				rm -f "$DOWNLOAD" >> "$LOG" 2>&1
+				echo "Moissanite update installer finished." >> "$LOG"
 				rm -f "$0"
 				""".formatted(
-				quotePosix(install.modsDir().toString()),
 				quotePosix(install.downloadedFile().toString()),
 				quotePosix(install.targetJar().toString()),
 				quotePosix(currentPath),
-				quotePosix(install.targetJar().toString()),
-				quotePosix(currentPath),
-				quotePosix(currentPath),
-				quotePosix(install.downloadedFile().toString())
+				quotePosix(install.modsDir().toString()),
+				quotePosix(log.toString())
 		);
 		Files.writeString(script, content, StandardCharsets.UTF_8);
 		script.toFile().setExecutable(true, true);
@@ -409,24 +476,87 @@ public final class ModUpdater {
 
 	private static PendingInstall prepareInstall(ReleaseInfo release, Path downloadedFile) {
 		Path modsDir = FabricLoader.getInstance().getGameDir().resolve("mods").toAbsolutePath().normalize();
-		Path resolvedCurrentJar = resolveCurrentJarPath();
-		Path currentJar = null;
-		if (resolvedCurrentJar != null
-				&& resolvedCurrentJar.getParent() != null
-				&& resolvedCurrentJar.getParent().toAbsolutePath().normalize().equals(modsDir)) {
-			currentJar = resolvedCurrentJar;
-		}
-		Path targetJar = selectTargetJar(modsDir, currentJar, release, downloadedFile);
+		Path currentJar = resolveInstalledJarPath(modsDir, release.versionText());
+		Path targetJar = selectTargetJar(modsDir, release, downloadedFile);
 		return new PendingInstall(downloadedFile, targetJar, currentJar, modsDir);
 	}
 
-	private static Path selectTargetJar(Path modsDir, Path currentJar, ReleaseInfo release, Path downloadedFile) {
-		if (currentJar != null && currentJar.getParent() != null && currentJar.getParent().toAbsolutePath().normalize().equals(modsDir)) {
-			return currentJar;
-		}
+	private static Path selectTargetJar(Path modsDir, ReleaseInfo release, Path downloadedFile) {
 		String fallbackName = release.asset() != null ? release.asset().name() : downloadedFile.getFileName().toString();
 		String safeName = sanitizeFilename(fallbackName, "moissanite-" + release.versionText() + ".jar");
 		return modsDir.resolve(safeName).toAbsolutePath().normalize();
+	}
+
+	private static Path resolveInstalledJarPath(Path modsDir, String targetVersionText) {
+		Path codeSourceJar = resolveCurrentJarPath();
+		if (isDirectChild(codeSourceJar, modsDir)) {
+			return codeSourceJar;
+		}
+		return findMoissaniteJarInMods(modsDir, targetVersionText);
+	}
+
+	private static Path findMoissaniteJarInMods(Path modsDir, String targetVersionText) {
+		if (!Files.isDirectory(modsDir)) {
+			return null;
+		}
+
+		try (Stream<Path> stream = Files.list(modsDir)) {
+			List<Path> jarPaths = stream
+					.filter(Files::isRegularFile)
+					.filter(path -> path.getFileName() != null)
+					.filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".jar"))
+					.sorted(Comparator.comparing(path -> path.getFileName().toString().toLowerCase(Locale.ROOT)))
+					.toList();
+
+			Path fallback = null;
+			for (Path jarPath : jarPaths) {
+				String version = readMoissaniteJarVersion(jarPath);
+				if (version == null) {
+					continue;
+				}
+
+				Path normalized = jarPath.toAbsolutePath().normalize();
+				if (version.equals(CURRENT_VERSION_TEXT)) {
+					return normalized;
+				}
+				if (!version.equals(targetVersionText) && fallback == null) {
+					fallback = normalized;
+				}
+			}
+			return fallback;
+		} catch (IOException exception) {
+			LOGGER.debug("Failed to scan mods directory for installed Moissanite jar", exception);
+			return null;
+		}
+	}
+
+	private static String readMoissaniteJarVersion(Path jarPath) {
+		try (JarFile jarFile = new JarFile(jarPath.toFile())) {
+			JarEntry metadataEntry = jarFile.getJarEntry("fabric.mod.json");
+			if (metadataEntry == null) {
+				return null;
+			}
+			try (InputStream stream = jarFile.getInputStream(metadataEntry)) {
+				JsonElement root = JsonParser.parseString(new String(stream.readAllBytes(), StandardCharsets.UTF_8));
+				if (root == null || !root.isJsonObject()) {
+					return null;
+				}
+
+				JsonObject metadata = root.getAsJsonObject();
+				if (!Moissanite.MOD_ID.equals(readString(metadata, "id"))) {
+					return null;
+				}
+				return readString(metadata, "version");
+			}
+		} catch (IOException | RuntimeException ignored) {
+			return null;
+		}
+	}
+
+	private static boolean isDirectChild(Path path, Path directory) {
+		return path != null
+				&& path.getParent() != null
+				&& path.getParent().toAbsolutePath().normalize().equals(directory.toAbsolutePath().normalize());
 	}
 
 	private static Path resolveCurrentJarPath() {
@@ -491,12 +621,25 @@ public final class ModUpdater {
 		sendComponent(actions);
 	}
 
+	private static void sendAutoDownloadStartingMessage(ReleaseInfo release) {
+		MutableComponent line = prefix()
+				.append(Component.literal("Update available ").withStyle(ChatFormatting.WHITE))
+				.append(Component.literal(CURRENT_VERSION_TEXT + " -> " + release.versionText()).withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD))
+				.append(Component.literal(". Auto-download enabled; downloading now.").withStyle(ChatFormatting.WHITE));
+		sendComponent(line);
+	}
+
 	private static void sendDownloadCompleteMessage(ReleaseInfo release) {
 		MutableComponent line = prefix()
 				.append(Component.literal("Downloaded ").withStyle(ChatFormatting.WHITE))
 				.append(Component.literal(release.versionText()).withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD))
 				.append(Component.literal(". Close the game to install automatically.").withStyle(ChatFormatting.WHITE));
 		sendComponent(line);
+	}
+
+	private static boolean shouldAutoDownload(CheckTrigger trigger) {
+		return trigger == CheckTrigger.AUTO_JOIN
+				&& Boolean.TRUE.equals(UiDefinitions.UPDATE_AUTO_DOWNLOAD_LATEST.get());
 	}
 
 	private static void sendOpenReleaseHint(ReleaseInfo release) {
