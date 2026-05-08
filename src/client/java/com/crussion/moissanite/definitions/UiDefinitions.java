@@ -445,6 +445,9 @@ public final class UiDefinitions {
 	public static final UiSwitch AUTO_DIRECTION = KUUDRA_CHEATS.toggle("Auto Direction", false);
 	public static final UiSlider AUTO_DIRECTION_ROTATION_MULTIPLIER = KUUDRA_CHEATS.slider(
 			"Auto Direction Rotation Multiplier", 0.1, 2.0, 0.5, 0.1);
+	public static final UiSwitch AUTO_DIRECTION_AIM_AT_KUUDRA = KUUDRA_CHEATS.toggle("Aim at Kuudra", false);
+	public static final UiSlider AUTO_DIRECTION_AIM_AT_KUUDRA_TICKS = KUUDRA_CHEATS.slider(
+			"Aim at Kuudra Ticks", 1.0, 100.0, 30.0, 1.0);
 	public static final UiSwitch AUTO_DIRECTION_AUTO_HYPERION = KUUDRA_CHEATS.toggle("Auto Hyperion", false);
 	public static final UiSwitch AUTO_DIRECTION_AUTO_REAPER = KUUDRA_CHEATS.toggle("Auto Reaper", false);
 	public static final UiSwitch AUTO_SWAP_ARMOR_RAG = KUUDRA_CHEATS.toggle("Auto Swap Armor After Rag", false);
@@ -535,6 +538,9 @@ public final class UiDefinitions {
 		AUTO_EXPERIMENTS_GET_MAX_XP.visibleWhen(AUTO_EXPERIMENTS);
 		AUTO_EXPERIMENTS_MACRO_STOP.visibleWhen(AutoExperimentMacro::isRunning);
 		AUTO_DIRECTION_ROTATION_MULTIPLIER.visibleWhen(AUTO_DIRECTION);
+		AUTO_DIRECTION_AIM_AT_KUUDRA.visibleWhen(AUTO_DIRECTION);
+		AUTO_DIRECTION_AIM_AT_KUUDRA_TICKS.visibleWhen(() -> Boolean.TRUE.equals(AUTO_DIRECTION.get())
+				&& Boolean.TRUE.equals(AUTO_DIRECTION_AIM_AT_KUUDRA.get()));
 		AUTO_DIRECTION_AUTO_HYPERION.visibleWhen(AUTO_DIRECTION);
 		AUTO_DIRECTION_AUTO_REAPER.visibleWhen(AUTO_DIRECTION);
 		AUTO_REND_AUTO_BACK_PEARL.visibleWhen(AUTO_REND);

@@ -147,6 +147,10 @@ public final class AutoRend_Reworked {
 		return pullTickCounter;
 	}
 
+	public static boolean isSequenceRunning() {
+		return sequenceRunning;
+	}
+
 	public static void init() {
 		if (initialized) {
 			return;

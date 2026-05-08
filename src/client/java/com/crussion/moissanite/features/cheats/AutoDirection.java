@@ -14,6 +14,8 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.monster.MagmaCube;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 public final class AutoDirection {
 	private static final String KUUDRA_HOLLOW = "Kuudra's Hollow";
@@ -23,11 +25,15 @@ public final class AutoDirection {
 	private static final int HYPERION_CAST_DELAY_TICKS = 1;
 	private static final double DPS_Y_MIN = 5.9D;
 	private static final double DPS_Y_MAX = 6.1D;
+	private static final double KUUDRA_AIM_MAX_Y = 33.0D;
 	private static final float HEALTH_MIN = 24_900.0F;
 	private static final float HEALTH_MAX = 100_000.0F; // FROM 25_000.0F
 	private static boolean initialized;
 	private static boolean waitForTpActive;
 	private static long waitForTpUntilMs;
+	private static boolean kuudraAimActive;
+	private static boolean kuudraAimIssuedRotation;
+	private static int kuudraAimTicksRemaining;
 
 	private AutoDirection() {
 	}
@@ -58,11 +64,15 @@ public final class AutoDirection {
 	}
 
 	private static void handleClientTick(Minecraft client) {
-		if (!waitForTpActive) {
-			return;
-		}
 		if (client == null || client.player == null || client.level == null) {
 			waitForTpActive = false;
+			stopKuudraAim(true);
+			return;
+		}
+
+		tickKuudraAim(client);
+
+		if (!waitForTpActive) {
 			return;
 		}
 		if (System.currentTimeMillis() > waitForTpUntilMs) {
@@ -83,6 +93,7 @@ public final class AutoDirection {
 
 		waitForTpActive = false;
 		rotateTowardKuudra(kuudra);
+		startKuudraAim(kuudra);
 	}
 
 	private static boolean isAtDpsY(double y) {
@@ -123,6 +134,121 @@ public final class AutoDirection {
 		}
 
 		TickTaskScheduler.schedule(HYPERION_CAST_DELAY_TICKS, AutoDirection::tryAutoHyperionCast);
+	}
+
+	private static void startKuudraAim(MagmaCube kuudra) {
+		if (!Boolean.TRUE.equals(UiDefinitions.AUTO_DIRECTION_AIM_AT_KUUDRA.get())) {
+			return;
+		}
+
+		kuudraAimActive = true;
+		kuudraAimIssuedRotation = false;
+		kuudraAimTicksRemaining = getConfiguredKuudraAimTicks();
+		if (isKuudraUnderAimY(kuudra)) {
+			kuudraAimIssuedRotation = aimAtKuudraFace(kuudra);
+		}
+		kuudraAimTicksRemaining--;
+	}
+
+	private static void tickKuudraAim(Minecraft client) {
+		if (!kuudraAimActive) {
+			return;
+		}
+		if (kuudraAimTicksRemaining <= 0) {
+			stopKuudraAim(true);
+			return;
+		}
+		if (!Boolean.TRUE.equals(UiDefinitions.AUTO_DIRECTION.get())
+				|| !Boolean.TRUE.equals(UiDefinitions.AUTO_DIRECTION_AIM_AT_KUUDRA.get())
+				|| !ScoreboardAreaMatcher.isInArea(KUUDRA_HOLLOW)
+				|| AutoRend_Reworked.isSequenceRunning()) {
+			stopKuudraAim(true);
+			return;
+		}
+
+		MagmaCube kuudra = KuudraEntityFinder.findKuudra(client);
+		if (kuudra == null) {
+			stopKuudraAim(true);
+			return;
+		}
+		if (!isKuudraUnderAimY(kuudra)) {
+			pauseKuudraAim();
+			kuudraAimTicksRemaining--;
+			return;
+		}
+
+		kuudraAimIssuedRotation = aimAtKuudraFace(kuudra);
+		kuudraAimTicksRemaining--;
+	}
+
+	private static boolean isKuudraUnderAimY(MagmaCube kuudra) {
+		return kuudra != null && kuudra.getY() < KUUDRA_AIM_MAX_Y;
+	}
+
+	private static void stopKuudraAim(boolean cancelRotation) {
+		boolean wasActive = kuudraAimActive;
+		boolean hadAimRotation = kuudraAimIssuedRotation;
+		kuudraAimActive = false;
+		kuudraAimIssuedRotation = false;
+		kuudraAimTicksRemaining = 0;
+		if (cancelRotation && wasActive && hadAimRotation) {
+			RotationController.cancelRotation();
+		}
+	}
+
+	private static void pauseKuudraAim() {
+		if (kuudraAimIssuedRotation) {
+			RotationController.cancelRotation();
+			kuudraAimIssuedRotation = false;
+		}
+	}
+
+	private static boolean aimAtKuudraFace(MagmaCube kuudra) {
+		Vec3 target = getClosestHorizontalFaceCenter(kuudra);
+		if (target == null) {
+			return false;
+		}
+		return RotationController.rotateTo(
+				target.x,
+				target.y,
+				target.z,
+				UiDefinitions.AUTO_DIRECTION_ROTATION_MULTIPLIER.get());
+	}
+
+	private static Vec3 getClosestHorizontalFaceCenter(MagmaCube kuudra) {
+		Minecraft client = Minecraft.getInstance();
+		if (client == null || client.player == null || kuudra == null) {
+			return null;
+		}
+
+		AABB box = kuudra.getBoundingBox();
+		Vec3 center = box.getCenter();
+		Vec3 eye = client.player.getEyePosition();
+		Vec3[] faceCenters = {
+				new Vec3(box.minX, center.y, center.z),
+				new Vec3(box.maxX, center.y, center.z),
+				new Vec3(center.x, center.y, box.minZ),
+				new Vec3(center.x, center.y, box.maxZ)
+		};
+
+		Vec3 closest = faceCenters[0];
+		double closestDistanceSqr = closest.distanceToSqr(eye);
+		for (int i = 1; i < faceCenters.length; i++) {
+			double distanceSqr = faceCenters[i].distanceToSqr(eye);
+			if (distanceSqr < closestDistanceSqr) {
+				closest = faceCenters[i];
+				closestDistanceSqr = distanceSqr;
+			}
+		}
+		return closest;
+	}
+
+	private static int getConfiguredKuudraAimTicks() {
+		Double rawTicks = UiDefinitions.AUTO_DIRECTION_AIM_AT_KUUDRA_TICKS.get();
+		if (rawTicks == null || !Double.isFinite(rawTicks)) {
+			return 30;
+		}
+		return Math.max(1, rawTicks.intValue());
 	}
 
 	private static void tryAutoHyperionCast() {

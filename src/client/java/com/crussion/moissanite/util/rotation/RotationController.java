@@ -23,6 +23,14 @@ public final class RotationController {
 	private static final float YAW_SPEED_MAX = 640.0f;
 	private static final float PITCH_SPEED_MIN = 66.0f;
 	private static final float PITCH_SPEED_MAX = 290.0f;
+	private static final float YAW_ACCEL_MIN = 520.0f;
+	private static final float YAW_ACCEL_MAX = 4_200.0f;
+	private static final float PITCH_ACCEL_MIN = 420.0f;
+	private static final float PITCH_ACCEL_MAX = 2_800.0f;
+	private static final float YAW_GRAPH_SCALE = 110.0f;
+	private static final float PITCH_GRAPH_SCALE = 85.0f;
+	private static final float GRAPH_EXPONENTIAL_SHAPE = 4.35f;
+	private static final float GRAPH_MINIMUM_JERK_WEIGHT = 0.68f;
 	private static final float YAW_DEADZONE = 0.06f;
 	private static final float PITCH_DEADZONE = 0.05f;
 	private static final float DEFAULT_ROTATION_MULTIPLIER = 1.0f;
@@ -117,6 +125,11 @@ public final class RotationController {
 		return rotateTaskActive;
 	}
 
+	public static void cancelRotation() {
+		resetRotationController();
+		rotateTaskActive = false;
+	}
+
 	private static void onClientTick(Minecraft client) {
 		if (client == null || client.player == null) {
 			resetRotationController();
@@ -173,12 +186,12 @@ public final class RotationController {
 
 		float effectiveDt = dtSeconds / rotateTaskMultiplier;
 		float yawError = Mth.wrapDegrees(targetYaw - client.player.getYRot());
-		float pitchError = Mth.wrapDegrees(targetPitch - client.player.getXRot());
+		float pitchError = targetPitch - client.player.getXRot();
 		boolean exactYawFinish = rotateFinishYaw <= 0.0f;
 		boolean exactPitchFinish = rotateFinishPitch <= 0.0f;
 
-		float yawGraph = smoothGraph(Math.abs(yawError), 110.0f);
-		float pitchGraph = smoothGraph(Math.abs(pitchError), 85.0f);
+		float yawGraph = rotationGraph(Math.abs(yawError), YAW_GRAPH_SCALE);
+		float pitchGraph = rotationGraph(Math.abs(pitchError), PITCH_GRAPH_SCALE);
 
 		float yawStep = springStep(yawError, yawGraph, true, effectiveDt);
 		float pitchStep = springStep(pitchError, pitchGraph, false, effectiveDt);
@@ -211,7 +224,7 @@ public final class RotationController {
 		client.player.setYBodyRot(currentYaw);
 
 		float remainingYaw = Math.abs(Mth.wrapDegrees(targetYaw - client.player.getYRot()));
-		float remainingPitch = Math.abs(Mth.wrapDegrees(targetPitch - client.player.getXRot()));
+		float remainingPitch = Math.abs(targetPitch - client.player.getXRot());
 		if (remainingYaw <= rotateFinishYaw && remainingPitch <= rotateFinishPitch) {
 			resetRotationController();
 			rotateTaskActive = false;
@@ -228,11 +241,21 @@ public final class RotationController {
 		float maxSpeed = yawAxis
 				? Mth.lerp(graph, YAW_SPEED_MIN, YAW_SPEED_MAX)
 				: Mth.lerp(graph, PITCH_SPEED_MIN, PITCH_SPEED_MAX);
+		float maxAcceleration = yawAxis
+				? Mth.lerp(graph, YAW_ACCEL_MIN, YAW_ACCEL_MAX)
+				: Mth.lerp(graph, PITCH_ACCEL_MIN, PITCH_ACCEL_MAX);
 
 		float velocity = yawAxis ? yawVelocity : pitchVelocity;
-		velocity += error * spring * dtSeconds;
-		velocity *= (float) Math.exp(-damping * dtSeconds);
-		velocity = Mth.clamp(velocity, -maxSpeed, maxSpeed);
+		if (Math.abs(error) > 1.0e-4f && velocity != 0.0f && Math.signum(error) != Math.signum(velocity)) {
+			velocity *= (float) Math.exp(-damping * dtSeconds * 2.0f);
+		}
+
+		float targetVelocity = velocity + (error * spring * dtSeconds);
+		targetVelocity *= (float) Math.exp(-damping * dtSeconds);
+		targetVelocity = Mth.clamp(targetVelocity, -maxSpeed, maxSpeed);
+
+		float maxVelocityDelta = maxAcceleration * dtSeconds;
+		velocity = Mth.clamp(targetVelocity, velocity - maxVelocityDelta, velocity + maxVelocityDelta);
 		if (yawAxis) {
 			yawVelocity = velocity;
 		} else {
@@ -283,9 +306,19 @@ public final class RotationController {
 		return step;
 	}
 
-	private static float smoothGraph(float absError, float fullScale) {
+	private static float rotationGraph(float absError, float fullScale) {
+		if (absError <= 1.0e-6f) {
+			return 0.0f;
+		}
+
 		float t = Mth.clamp(absError / fullScale, 0.0f, 1.0f);
-		return t * t * (3.0f - (2.0f * t));
+		float minimumJerk = t * t * t * (10.0f + (t * (-15.0f + (6.0f * t))));
+		float exponential = (float) ((1.0D - Math.exp(-GRAPH_EXPONENTIAL_SHAPE * t))
+				/ (1.0D - Math.exp(-GRAPH_EXPONENTIAL_SHAPE)));
+		return Mth.clamp(
+				(Mth.lerp(GRAPH_MINIMUM_JERK_WEIGHT, exponential, minimumJerk)),
+				0.0f,
+				1.0f);
 	}
 
 	private static float sanitizeRotationMultiplier(double multiplier) {
