@@ -3,6 +3,7 @@
 # Moissanite
 
 Hypixel Skyblock QOL (UAYOR)
+Currently everything is WD, SPEC safe
 
 [![Minecraft](https://img.shields.io/badge/Minecraft-1.21.11-2ea043?style=for-the-badge)]()
 [![Fabric](https://img.shields.io/badge/Fabric-Client%20Mod-5865f2?style=for-the-badge)]()
@@ -98,7 +99,6 @@ Hypixel Skyblock QOL (UAYOR)
 - Invwalk
 - Mental Invwalk
 - Melody Invwalk
-- Melody Visualizer
 
 #### Invwalk Visualizer
 
@@ -123,12 +123,9 @@ Hypixel Skyblock QOL (UAYOR)
 - Kuudra Splits
 - Kuudra HP Bossbar
 - Kuudra HP Tag
-- Kuudra Cube HP Tag
 
 #### Normal
 
-- Auto Shop
-- Auto TAP
 - Kuudra Pre
 - Kuudra Rend Damage
 
@@ -140,11 +137,14 @@ Hypixel Skyblock QOL (UAYOR)
 - Auto Direction
 - Auto Armor Swap After Rag
 - Auto Reaper
+- Auto TAP
+- Auto Ballista (Auto Shop)
 - Auto Hyperion
 
 #### Showcase
 
 - [Auto Rend Showcase](https://youtu.be/DLIO9a7KTpQ)
+- [Auto Rend Setup](https://youtu.be/Gi7Z4huknRQ)
 
 ---
 
@@ -197,9 +197,12 @@ Hypixel Skyblock QOL (UAYOR)
 - Ghost Wardrobe
 - No Interact
 
-#### Wardrobe Keybinds
+#### Ghost Wardrobe
 
-- Wardrobe Keybinds
+- Keybinds
+
+- [Ghost Wardrobe showcase](https://youtu.be/KsOl8StLJYM)
+  
 
 #### Auto Experimentation
 
