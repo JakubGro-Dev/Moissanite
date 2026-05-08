@@ -39,6 +39,7 @@ import com.crussion.moissanite.features.kuudra.KuudraAutoShop;
 import com.crussion.moissanite.features.kuudra.KuudraAutoTap;
 import com.crussion.moissanite.features.kuudra.KuudraAutoOpenChest;
 import com.crussion.moissanite.update.ModUpdater;
+import com.crussion.moissanite.features.mining.UniqueServerHopper;
 
 public class MoissaniteClient implements ClientModInitializer {
 	@Override
@@ -76,6 +77,7 @@ public class MoissaniteClient implements ClientModInitializer {
 		KuudraAutoOpenChest.init();
 		AutoRend_Reworked.init();
 		StructureScanner.init();
+		UniqueServerHopper.init();
 		AlwaysSprint.init();
 		RenderImageOnScreen.init();
 		DungeonsTerminals.init();

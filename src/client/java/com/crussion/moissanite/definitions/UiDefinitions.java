@@ -8,6 +8,7 @@ import com.crussion.moissanite.features.kuudra.KuudraAutoOpenChest;
 import com.crussion.moissanite.features.kuudra.KuudraAutoPickupSupply;
 import com.crussion.moissanite.features.visual.RenderImageOnScreen;
 import com.crussion.moissanite.features.visual.storage.StorageOverlayFeature;
+import com.crussion.moissanite.features.mining.UniqueServerHopper;
 import com.crussion.moissanite.update.ModUpdater;
 import com.crussion.moissanite.ui.UiEntrypoints;
 import com.crussion.moissanite.ui.data.UiCatalog;
@@ -57,6 +58,7 @@ public final class UiDefinitions {
 
 	// Sections
 	public static final UiSection MINING_STRUCTURE_SCANNER = MINING.section("Structure Scanner");
+	public static final UiSection MINING_UNIQUE_SERVER_HOPPER = MINING.section("Unique Server Hopper");
 
 	// Bindables
 	public static final UiSwitch STRUCTURE_SCANNER = MINING_STRUCTURE_SCANNER.toggle("Structure Scanner", false);
@@ -69,6 +71,15 @@ public final class UiDefinitions {
 	public static final UiSwitch STRUCTURE_SCANNER_GROTTO = MINING_STRUCTURE_SCANNER.toggle("Grotto", false);
 	public static final UiSwitch STRUCTURE_SCANNER_CORLEONE = MINING_STRUCTURE_SCANNER.toggle("Corleone", false);
 	public static final UiSwitch STRUCTURE_SCANNER_BAL = MINING_STRUCTURE_SCANNER.toggle("Bal", false);
+	public static final UiSwitch UNIQUE_SERVER_HOPPER = MINING_UNIQUE_SERVER_HOPPER.toggle("Unique Server Hopper", false);
+	public static final UiInput UNIQUE_SERVER_HOPPER_COMMAND_1 = MINING_UNIQUE_SERVER_HOPPER.input("Command 1", "warp hub").maxLength(120);
+	public static final UiInput UNIQUE_SERVER_HOPPER_COMMAND_2 = MINING_UNIQUE_SERVER_HOPPER.input("Command 2", "warp crystal_hollows").maxLength(120);
+	public static final UiSlider UNIQUE_SERVER_HOPPER_WORLD_ENTER_DELAY = MINING_UNIQUE_SERVER_HOPPER.slider("World Enter Delay", 0.5, 60.0, 4.5, 0.1);
+	public static final UiSlider UNIQUE_SERVER_HOPPER_RETRY_DELAY = MINING_UNIQUE_SERVER_HOPPER.slider("Retry Delay", 0.5, 60.0, 2.0, 0.1);
+	public static final UiSlider UNIQUE_SERVER_HOPPER_LOCRAW_DELAY = MINING_UNIQUE_SERVER_HOPPER.slider("Locraw Delay", 0.2, 10.0, 1.2, 0.1);
+	public static final UiButton UNIQUE_SERVER_HOPPER_START = MINING_UNIQUE_SERVER_HOPPER.button("Start", "Start", button -> UniqueServerHopper.start());
+	public static final UiButton UNIQUE_SERVER_HOPPER_STOP = MINING_UNIQUE_SERVER_HOPPER.button("Stop", "Stop", button -> UniqueServerHopper.stop());
+	public static final UiButton UNIQUE_SERVER_HOPPER_CLEAN_CACHE = MINING_UNIQUE_SERVER_HOPPER.button("Clean Cache", "Clean", button -> UniqueServerHopper.cleanCache());
 
 	// Visibilities
 	static {
@@ -81,6 +92,15 @@ public final class UiDefinitions {
 		STRUCTURE_SCANNER_GROTTO.visibleWhen(STRUCTURE_SCANNER);
 		STRUCTURE_SCANNER_CORLEONE.visibleWhen(STRUCTURE_SCANNER);
 		STRUCTURE_SCANNER_BAL.visibleWhen(STRUCTURE_SCANNER);
+		UNIQUE_SERVER_HOPPER_COMMAND_1.visibleWhen(UNIQUE_SERVER_HOPPER);
+		UNIQUE_SERVER_HOPPER_COMMAND_2.visibleWhen(UNIQUE_SERVER_HOPPER);
+		UNIQUE_SERVER_HOPPER_WORLD_ENTER_DELAY.visibleWhen(UNIQUE_SERVER_HOPPER);
+		UNIQUE_SERVER_HOPPER_RETRY_DELAY.visibleWhen(UNIQUE_SERVER_HOPPER);
+		UNIQUE_SERVER_HOPPER_LOCRAW_DELAY.visibleWhen(UNIQUE_SERVER_HOPPER);
+		UNIQUE_SERVER_HOPPER_START.visibleWhen(() -> Boolean.TRUE.equals(UNIQUE_SERVER_HOPPER.get()) && !UniqueServerHopper.isRunning());
+		UNIQUE_SERVER_HOPPER_STOP.visibleWhen(() -> Boolean.TRUE.equals(UNIQUE_SERVER_HOPPER.get()) && UniqueServerHopper.isRunning());
+		UNIQUE_SERVER_HOPPER_CLEAN_CACHE.visibleWhen(UNIQUE_SERVER_HOPPER);
+		UNIQUE_SERVER_HOPPER.bind(UniqueServerHopper::onToggleChanged);
 	}
 
 	// Dungeons

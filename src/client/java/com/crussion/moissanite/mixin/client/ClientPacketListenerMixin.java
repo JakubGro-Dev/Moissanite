@@ -10,6 +10,7 @@ import com.crussion.moissanite.definitions.UiDefinitions;
 import com.crussion.moissanite.util.chat.SystemChatFilter;
 import com.crussion.moissanite.util.hypixel.SkyBlockLocationTracker;
 import com.crussion.moissanite.util.kuudra.KuudraPhaseTracker;
+import com.crussion.moissanite.features.mining.UniqueServerHopper;
 
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.protocol.game.ClientboundSetActionBarTextPacket;
@@ -49,6 +50,7 @@ public class ClientPacketListenerMixin {
 	@Inject(method = "handleSystemChat", at = @At("HEAD"), cancellable = true)
 	private void moissanite$filterSystemChat(ClientboundSystemChatPacket packet, CallbackInfo ci) {
 		SkyBlockLocationTracker.onSystemChat(packet.content());
+		UniqueServerHopper.onSystemChat(packet.content());
 		if (SystemChatFilter.shouldHide(packet.content())) {
 			ci.cancel();
 		}

@@ -42,7 +42,11 @@ public final class SkyBlockLocationTracker {
 			return;
 		}
 
-		requestLocraw(true);
+		requestLocraw(true, false);
+	}
+
+	public static void requestRefreshNow(boolean silent) {
+		requestLocraw(silent, true);
 	}
 
 	public static boolean isInCrystalHollows() {
@@ -78,14 +82,14 @@ public final class SkyBlockLocationTracker {
 		return true;
 	}
 
-	private static void requestLocraw(boolean silent) {
+	private static void requestLocraw(boolean silent, boolean force) {
 		Minecraft client = Minecraft.getInstance();
 		if (!canUseLocraw(client)) {
 			return;
 		}
 
 		long nowMs = System.currentTimeMillis();
-		if (nowMs - lastRefreshRequestAtMs < MIN_REFRESH_INTERVAL_MS) {
+		if (!force && nowMs - lastRefreshRequestAtMs < MIN_REFRESH_INTERVAL_MS) {
 			return;
 		}
 
