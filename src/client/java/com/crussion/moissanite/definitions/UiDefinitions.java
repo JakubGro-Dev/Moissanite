@@ -444,13 +444,13 @@ public final class UiDefinitions {
 	public static final UiNumber AUTO_EXPERIMENTS_ENCHANTING_LEVEL = CHEATS_AUTO_EXPERIMENTATION
 			.number("Auto Enchanting Level", 1, 60, 60);
 	public static final UiNumber AUTO_EXPERIMENTS_MACRO_UI_CLICK_DELAY = CHEATS_AUTO_EXPERIMENTATION
-			.number("Auto Enchanting UI Click Delay MS", 1, 1000, 200);
+			.number("Auto Enchanting UI Click Delay MS", 1, 1000, 250);
 	public static final UiNumber AUTO_EXPERIMENTS_SUPERPAIRS_CLICK_DELAY = CHEATS_AUTO_EXPERIMENTATION
-			.number("Auto Enchanting Superpairs Click Delay MS", 0, 10000, 1200);
+			.number("Auto Enchanting Superpairs Click Delay MS", 0, 10000, 1500);
 	public static final UiNumber AUTO_EXPERIMENTS_SUPERPAIRS_AFTER_PAIR_DELAY = CHEATS_AUTO_EXPERIMENTATION
-			.number("Auto Enchanting Superpairs After Pair Delay MS", 0, 10000, 3000);
+			.number("Auto Enchanting Superpairs After Pair Delay MS", 0, 10000, 3500);
 	public static final UiNumber AUTO_EXPERIMENTS_SUPERPAIRS_PAIR_CLAIMS = CHEATS_AUTO_EXPERIMENTATION
-			.number("Auto Enchanting Superpairs Pair Claims", 1, 1, 1);
+			.number("Auto Enchanting Superpairs Pair Claims", 1, 2, 1);
 	public static final UiButton AUTO_EXPERIMENTS_MACRO_START = CHEATS_AUTO_EXPERIMENTATION
 			.button("Auto Enchanting Start", "Start", button -> AutoExperimentMacro.start());
 	public static final UiButton AUTO_EXPERIMENTS_MACRO_STOP = CHEATS_AUTO_EXPERIMENTATION
