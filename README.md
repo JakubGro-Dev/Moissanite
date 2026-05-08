@@ -202,10 +202,12 @@ Currently everything is WD, SPEC safe
 
 - Keybinds
 
-- [Ghost Wardrobe showcase](https://youtu.be/KsOl8StLJYM)
+- [Ghost Wardrobe Showcase](https://youtu.be/KsOl8StLJYM)
   
 
 #### Auto Experimentation
 
 - Auto Experiments
-- Auto Enchanting Macro
+- Auto Enchanting Macro [FULL AFK]
+
+- [Auto Enchanting Macro Showcase](https://youtu.be/1L-47CzCTP4)
