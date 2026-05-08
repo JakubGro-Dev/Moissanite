@@ -16,6 +16,7 @@
 		"GameRendererMixin",
 		"GuiGraphicsStarItemstackMixin",
 		"ItemInHandRendererMixin",
+		"LevelVisualEnvironmentMixin",
 		"LivingEntitySwingMixin",
 		"LocalPlayerSwingMixin",
 		"MinecraftImGuiMixin",
@@ -28,6 +29,7 @@
 		"ScreenCustomGuiInputMixin",
 		"SlotAccessor",
 		"SlotOriginalCoordsMixin",
+		"SkyRendererMixin",
 		"SpooferAbstractSignEditScreenMixin",
 		"SpooferAnvilMenuMixin",
 		"SpooferAnvilScreenMixin",
@@ -36,6 +38,7 @@
 		"SpooferKnownPacksManagerMixin",
 		"SpooferLanguageAccessor",
 		"SpooferLanguageManagerAccessor",
+		"WeatherEffectRendererMixin",
 		"BossHealthOverlayMixin",
 		"CompactChatMixin"
 	],

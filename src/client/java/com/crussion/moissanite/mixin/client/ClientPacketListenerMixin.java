@@ -4,9 +4,11 @@ import com.crussion.moissanite.features.cheats.AutoDirection;
 import com.crussion.moissanite.features.cheats.AutoPearl;
 import com.crussion.moissanite.features.cheats.WardrobeKeybinds;
 import com.crussion.moissanite.features.dungeons.terminals.DungeonsTerminals;
+import com.crussion.moissanite.features.kuudra.KuudraAutoPickupSupply;
 import com.crussion.moissanite.features.kuudra.KuudraAutoSwapArmorRag;
 import com.crussion.moissanite.definitions.UiDefinitions;
 import com.crussion.moissanite.util.chat.SystemChatFilter;
+import com.crussion.moissanite.util.hypixel.SkyBlockLocationTracker;
 import com.crussion.moissanite.util.kuudra.KuudraPhaseTracker;
 
 import net.minecraft.client.multiplayer.ClientPacketListener;
@@ -46,6 +48,7 @@ public class ClientPacketListenerMixin {
 
 	@Inject(method = "handleSystemChat", at = @At("HEAD"), cancellable = true)
 	private void moissanite$filterSystemChat(ClientboundSystemChatPacket packet, CallbackInfo ci) {
+		SkyBlockLocationTracker.onSystemChat(packet.content());
 		if (SystemChatFilter.shouldHide(packet.content())) {
 			ci.cancel();
 		}
@@ -71,6 +74,9 @@ public class ClientPacketListenerMixin {
 		if (Boolean.TRUE.equals(UiDefinitions.AUTO_SHOP.get())) {
 			com.crussion.moissanite.features.kuudra.KuudraAutoShop.onSystemChat(packet.content());
 		}
+		if (Boolean.TRUE.equals(UiDefinitions.AUTO_PICKUP_SUPPLY.get())) {
+			KuudraAutoPickupSupply.onSystemChat(packet.content());
+		}
 		DungeonsTerminals.onSystemChat(packet.content());
 	}
 
@@ -91,6 +97,9 @@ public class ClientPacketListenerMixin {
 		if (Boolean.TRUE.equals(UiDefinitions.AUTO_PEARL.get())) {
 			AutoPearl.onTitleText(packet.text());
 		}
+		if (Boolean.TRUE.equals(UiDefinitions.AUTO_PICKUP_SUPPLY.get())) {
+			KuudraAutoPickupSupply.onTitleText(packet.text());
+		}
 	}
 
 	@Inject(method = "setSubtitleText", at = @At("TAIL"))
@@ -98,12 +107,18 @@ public class ClientPacketListenerMixin {
 		if (Boolean.TRUE.equals(UiDefinitions.AUTO_PEARL.get())) {
 			AutoPearl.onTitleText(packet.text());
 		}
+		if (Boolean.TRUE.equals(UiDefinitions.AUTO_PICKUP_SUPPLY.get())) {
+			KuudraAutoPickupSupply.onTitleText(packet.text());
+		}
 	}
 
 	@Inject(method = "setActionBarText", at = @At("TAIL"))
 	private void moissanite$handleSetActionBarText(ClientboundSetActionBarTextPacket packet, CallbackInfo ci) {
 		if (Boolean.TRUE.equals(UiDefinitions.AUTO_PEARL.get())) {
 			AutoPearl.onTitleText(packet.text());
+		}
+		if (Boolean.TRUE.equals(UiDefinitions.AUTO_PICKUP_SUPPLY.get())) {
+			KuudraAutoPickupSupply.onTitleText(packet.text());
 		}
 	}
 
@@ -117,6 +132,7 @@ public class ClientPacketListenerMixin {
 				|| Boolean.TRUE.equals(UiDefinitions.REND_DAMAGE.get())
 				|| Boolean.TRUE.equals(UiDefinitions.AUTO_REND.get())
 				|| Boolean.TRUE.equals(UiDefinitions.AUTO_PEARL.get())
+				|| Boolean.TRUE.equals(UiDefinitions.AUTO_PICKUP_SUPPLY.get())
 				|| Boolean.TRUE.equals(UiDefinitions.AUTO_DIRECTION.get())
 				|| Boolean.TRUE.equals(UiDefinitions.AUTO_SHOP.get())
 				|| Boolean.TRUE.equals(UiDefinitions.AUTO_TAP.get())

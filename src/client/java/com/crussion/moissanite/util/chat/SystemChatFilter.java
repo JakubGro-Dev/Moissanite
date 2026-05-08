@@ -1,6 +1,7 @@
 package com.crussion.moissanite.util.chat;
 
 import com.crussion.moissanite.definitions.UiDefinitions;
+import com.crussion.moissanite.util.hypixel.SkyBlockLocationTracker;
 import com.crussion.moissanite.util.text.TextNormalizer;
 import java.util.regex.Pattern;
 import net.minecraft.network.chat.Component;
@@ -27,7 +28,10 @@ public final class SystemChatFilter {
 				&& IMPLOSION_DAMAGE_PATTERN.matcher(text).find()) {
 			return true;
 		}
-		return Boolean.TRUE.equals(UiDefinitions.DISABLE_ABILITY_COOLDOWN.get())
-				&& ABILITY_COOLDOWN_PATTERN.matcher(text).matches();
+		if (Boolean.TRUE.equals(UiDefinitions.DISABLE_ABILITY_COOLDOWN.get())
+				&& ABILITY_COOLDOWN_PATTERN.matcher(text).matches()) {
+			return true;
+		}
+		return SkyBlockLocationTracker.shouldHideSystemChat(message);
 	}
 }

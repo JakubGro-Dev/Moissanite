@@ -8,9 +8,9 @@ import net.minecraft.client.Minecraft;
 
 public final class Zoom {
 	private static final double MIN_ZOOM_FACTOR = 1.0D;
-	private static final double MAX_ZOOM_FACTOR = 35.0D;
+	private static final double MAX_ZOOM_FACTOR = 120.0D;
 	private static final double DEFAULT_ZOOM_FACTOR = 6.0D;
-	private static final double ZOOM_SCROLL_STEP = 1.0D;
+	private static final double ZOOM_SCROLL_MULTIPLIER = 1.1D;
 	private static boolean initialized;
 	private static boolean zoomHeldLastCheck;
 	private static double currentZoomFactor = DEFAULT_ZOOM_FACTOR;
@@ -32,7 +32,7 @@ public final class Zoom {
 
 		double scrollAmount = verticalAmount != 0.0D ? verticalAmount : -horizontalAmount;
 		if (scrollAmount != 0.0D) {
-			adjustZoomFactor(scrollAmount * ZOOM_SCROLL_STEP);
+			adjustZoomFactor(scrollAmount);
 		}
 		return true;
 	}
@@ -82,8 +82,8 @@ public final class Zoom {
 		return KeybindKeys.isPressed(client.getWindow(), keyCode);
 	}
 
-	private static void adjustZoomFactor(double delta) {
-		currentZoomFactor = clampZoomFactor(currentZoomFactor + delta);
+	private static void adjustZoomFactor(double scrollAmount) {
+		currentZoomFactor = clampZoomFactor(currentZoomFactor * Math.pow(ZOOM_SCROLL_MULTIPLIER, scrollAmount));
 	}
 
 	private static double effectiveZoomFactor() {

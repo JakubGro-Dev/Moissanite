@@ -26,10 +26,11 @@ import imgui.ImGui;
 import imgui.ImGuiIO;
 import imgui.ImGuiViewport;
 import imgui.flag.ImGuiColorEditFlags;
+import imgui.flag.ImGuiComboFlags;
 import imgui.flag.ImGuiCond;
 import imgui.flag.ImGuiInputTextFlags;
+import imgui.flag.ImGuiStyleVar;
 import imgui.flag.ImGuiWindowFlags;
-import imgui.type.ImInt;
 import imgui.type.ImString;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
@@ -498,15 +499,29 @@ public final class ImGuiInventoryOverlayScreen extends ImGuiScreen {
 			MoissaniteImGui.text(ImGui.getWindowDrawList(), "No options", x, y + 5.0f, Colors.TEXT_MUTED);
 			return;
 		}
-		String[] labels = options.toArray(String[]::new);
 		int currentIndex = Math.max(0, options.indexOf(value.get()));
-		ImInt selected = new ImInt(currentIndex);
+		String preview = options.get(MoissaniteImGui.clamp(currentIndex, 0, options.size() - 1));
 		ImGui.setCursorScreenPos(x, y);
 		ImGui.setNextItemWidth(width);
 		MoissaniteImGui.pushFrameColors();
-		if (ImGui.combo("##dropdown", selected, labels)) {
-			value.set(options.get(MoissaniteImGui.clamp(selected.get(), 0, options.size() - 1)));
+		ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 7.0f);
+		ImGui.pushStyleVar(ImGuiStyleVar.PopupRounding, 7.0f);
+		ImGui.pushStyleVar(ImGuiStyleVar.PopupBorderSize, 1.0f);
+		ImGui.pushStyleVar(ImGuiStyleVar.FramePadding, 9.0f, 4.0f);
+		if (ImGui.beginCombo("##dropdown", preview, ImGuiComboFlags.HeightLarge)) {
+			for (int i = 0; i < options.size(); i++) {
+				String option = options.get(i);
+				boolean selected = i == currentIndex;
+				if (ImGui.selectable(option + "##" + i, selected)) {
+					value.set(option);
+				}
+				if (selected) {
+					ImGui.setItemDefaultFocus();
+				}
+			}
+			ImGui.endCombo();
 		}
+		ImGui.popStyleVar(4);
 		MoissaniteImGui.popFrameColors();
 	}
 

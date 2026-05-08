@@ -4,6 +4,10 @@ import com.crussion.moissanite.ui.style.Colors;
 import imgui.ImFont;
 import imgui.ImDrawList;
 import imgui.ImGui;
+import imgui.flag.ImGuiCol;
+import imgui.flag.ImGuiInputTextFlags;
+import imgui.flag.ImGuiStyleVar;
+import imgui.type.ImString;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -12,7 +16,10 @@ public final class MoissaniteImGui {
 	public static final float TITLE_SIZE = 24.0f;
 	public static final float SECTION_TITLE_SIZE = 19.0f;
 	public static final float SMALL_TEXT_SIZE = 15.0f;
+	private static final int FRAME_COLOR_COUNT = 11;
+	private static final int SLIDER_VALUE_BUFFER_SIZE = 32;
 	private static final Map<Integer, Float> ANIMATIONS = new HashMap<>();
+	private static final Map<Integer, ImString> SLIDER_EDIT_BUFFERS = new HashMap<>();
 	private static ImFont regularFont;
 	private static ImFont smallFont;
 	private static ImFont sectionFont;
@@ -144,12 +151,15 @@ public final class MoissaniteImGui {
 	}
 
 	public static double sliderControl(ImDrawList draw, String id, double value, double min, double max, double step, float x, float y, float width, float height, String text) {
-		float valueBoxWidth = 54.0f;
+		float valueBoxWidth = Math.min(76.0f, Math.max(54.0f, width * 0.28f));
 		float trackWidth = Math.max(40.0f, width - valueBoxWidth - 12.0f);
 		float trackX = x;
 		float trackY = y + (height / 2.0f) - 3.0f;
-		boolean changed = invisibleButton(id, x, y, width, height);
-		float hover = animation(id + "_hover", ImGui.isItemHovered() || ImGui.isItemActive(), 18.0f);
+		float valueX = x + width - valueBoxWidth;
+
+		boolean changed = invisibleButton(id + "_track", x, y, trackWidth, height);
+		boolean trackHovered = ImGui.isItemHovered();
+		boolean trackActive = ImGui.isItemActive();
 		if (ImGui.isItemActive() && max > min) {
 			float mouseX = ImGui.getIO().getMousePosX();
 			double percent = clamp((mouseX - trackX) / trackWidth, 0.0D, 1.0D);
@@ -158,18 +168,60 @@ public final class MoissaniteImGui {
 			changed = true;
 		}
 
+		int editId = ImGui.getID(id + "_value_edit");
+		ImString editBuffer = SLIDER_EDIT_BUFFERS.get(editId);
+		boolean editing = editBuffer != null;
+		boolean valueHovered = isInside(ImGui.getIO().getMousePosX(), ImGui.getIO().getMousePosY(), valueX, y, valueBoxWidth, height);
+		boolean startEditing = false;
+		if (!editing) {
+			boolean valueClicked = invisibleButton(id + "_value", valueX, y, valueBoxWidth, height);
+			valueHovered = ImGui.isItemHovered();
+			startEditing = valueClicked;
+			if (startEditing) {
+				editBuffer = new ImString(text == null ? "" : text, SLIDER_VALUE_BUFFER_SIZE);
+				SLIDER_EDIT_BUFFERS.put(editId, editBuffer);
+				editing = true;
+			}
+		}
+
 		double percent = max <= min ? 0.0D : clamp((value - min) / (max - min), 0.0D, 1.0D);
 		float activeWidth = (float) (trackWidth * percent);
 		float knobX = trackX + activeWidth;
+		float hover = animation(id + "_hover", trackHovered || trackActive, 18.0f);
 		draw.addRectFilled(trackX, trackY, trackX + trackWidth, trackY + 6.0f, color(Colors.SLIDER_TRACK), 4.0f);
 		draw.addRectFilled(trackX, trackY, trackX + activeWidth, trackY + 6.0f, color(Colors.SLIDER_ACTIVE), 4.0f);
 		draw.addCircleFilled(knobX, trackY + 3.0f, 8.0f + hover * 2.0f, color(withAlpha(Colors.ACCENT_SOFT, Math.round(76.0f * hover))), 24);
 		draw.addCircleFilled(knobX, trackY + 3.0f, 7.0f, color(Colors.SLIDER_KNOB), 24);
 		draw.addCircle(knobX, trackY + 3.0f, 7.0f, color(Colors.SLIDER_ACTIVE), 24, 1.0f + hover);
 
-		float valueX = x + width - valueBoxWidth;
+		if (editing) {
+			ImGui.setCursorScreenPos(valueX, y);
+			ImGui.setNextItemWidth(valueBoxWidth);
+			pushFrameColors();
+			ImGui.pushStyleVar(ImGuiStyleVar.FrameRounding, 7.0f);
+			ImGui.pushStyleVar(ImGuiStyleVar.FramePadding, 6.0f, Math.max(2.0f, (height - FONT_SIZE) / 2.0f));
+			if (startEditing) {
+				ImGui.setKeyboardFocusHere();
+			}
+			boolean submitted = ImGui.inputText(id + "_value_input", editBuffer,
+					ImGuiInputTextFlags.CharsDecimal | ImGuiInputTextFlags.AutoSelectAll | ImGuiInputTextFlags.EnterReturnsTrue);
+			boolean deactivated = ImGui.isItemDeactivated();
+			ImGui.popStyleVar(2);
+			popFrameColors();
+			if (submitted || deactivated) {
+				SLIDER_EDIT_BUFFERS.remove(editId);
+				double parsed = parseSliderEditValue(editBuffer.get());
+				if (Double.isFinite(parsed)) {
+					value = snap(parsed, min, max, step);
+					changed = true;
+				}
+			}
+			return changed ? value : Double.NaN;
+		}
+
+		float valueHover = animation(id + "_value_hover", valueHovered, 18.0f);
 		draw.addRectFilled(valueX, y, valueX + valueBoxWidth, y + height, color(Colors.SLIDER_VALUE_BG), 7.0f);
-		draw.addRect(valueX, y, valueX + valueBoxWidth, y + height, color(Colors.SLIDER_VALUE_OUTLINE), 7.0f, 0, 1.0f);
+		draw.addRect(valueX, y, valueX + valueBoxWidth, y + height, color(mixColor(Colors.SLIDER_VALUE_OUTLINE, Colors.BUTTON_OUTLINE_HOVER, valueHover)), 7.0f, 0, 1.0f);
 		String label = fitText(text, valueBoxWidth - 10.0f);
 		float textWidth = textWidth(label, FONT_SIZE);
 		draw.addText(fontForSize(FONT_SIZE), Math.round(FONT_SIZE), valueX + Math.max(5.0f, (valueBoxWidth - textWidth) / 2.0f), y + Math.max(3.0f, (height - FONT_SIZE) / 2.0f), color(Colors.TEXT_PRIMARY), label);
@@ -177,17 +229,21 @@ public final class MoissaniteImGui {
 	}
 
 	public static void pushFrameColors() {
-		pushColor(imgui.flag.ImGuiCol.FrameBg, Colors.INPUT_BG);
-		pushColor(imgui.flag.ImGuiCol.FrameBgHovered, Colors.BUTTON_HOVER);
-		pushColor(imgui.flag.ImGuiCol.FrameBgActive, Colors.INPUT_OUTLINE_FOCUS);
-		pushColor(imgui.flag.ImGuiCol.Button, Colors.BUTTON_BG);
-		pushColor(imgui.flag.ImGuiCol.ButtonHovered, Colors.BUTTON_HOVER);
-		pushColor(imgui.flag.ImGuiCol.ButtonActive, Colors.ACCENT_DIM);
-		pushColor(imgui.flag.ImGuiCol.Border, Colors.BUTTON_OUTLINE);
+		pushColor(ImGuiCol.FrameBg, Colors.INPUT_BG);
+		pushColor(ImGuiCol.FrameBgHovered, Colors.BUTTON_HOVER);
+		pushColor(ImGuiCol.FrameBgActive, Colors.INPUT_OUTLINE_FOCUS);
+		pushColor(ImGuiCol.Button, Colors.BUTTON_BG);
+		pushColor(ImGuiCol.ButtonHovered, Colors.BUTTON_HOVER);
+		pushColor(ImGuiCol.ButtonActive, Colors.ACCENT_DIM);
+		pushColor(ImGuiCol.Border, Colors.BUTTON_OUTLINE);
+		pushColor(ImGuiCol.PopupBg, Colors.rgba(36, 41, 66, 252));
+		pushColor(ImGuiCol.Header, Colors.rgba(154, 127, 238, 150));
+		pushColor(ImGuiCol.HeaderHovered, Colors.rgba(81, 91, 132, 244));
+		pushColor(ImGuiCol.HeaderActive, Colors.rgba(168, 132, 255, 190));
 	}
 
 	public static void popFrameColors() {
-		ImGui.popStyleColor(7);
+		ImGui.popStyleColor(FRAME_COLOR_COUNT);
 	}
 
 	public static void pushColor(int target, int argb) {
@@ -249,6 +305,21 @@ public final class MoissaniteImGui {
 		}
 		double snapped = min + (Math.round((clamped - min) / step) * step);
 		return clamp(snapped, min, max);
+	}
+
+	private static double parseSliderEditValue(String text) {
+		if (text == null) {
+			return Double.NaN;
+		}
+		String trimmed = text.trim();
+		if (trimmed.isEmpty() || "-".equals(trimmed) || ".".equals(trimmed) || "-.".equals(trimmed)) {
+			return Double.NaN;
+		}
+		try {
+			return Double.parseDouble(trimmed);
+		} catch (NumberFormatException ignored) {
+			return Double.NaN;
+		}
 	}
 
 	public static double clamp(double value, double min, double max) {

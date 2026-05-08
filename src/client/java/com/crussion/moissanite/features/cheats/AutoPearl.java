@@ -29,7 +29,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
@@ -213,6 +212,14 @@ public final class AutoPearl {
 
 	public static void setMoveModeActive(boolean moveModeActive) {
 		AutoPearl.moveModeActive = moveModeActive;
+	}
+
+	public static boolean isPickupTrackingActive() {
+		return pickupTimerActive;
+	}
+
+	public static boolean isSequenceActive() {
+		return currentStep != SequenceStep.IDLE;
 	}
 
 	public static void onSystemChat(Component message) {
@@ -1055,7 +1062,6 @@ public final class AutoPearl {
 				resetSequence();
 				return;
 			}
-			applyAndSendRotation(client, currentPlan.yaw(), currentPlan.pitch());
 			stepStarted = true;
 			sendDebug("THROW_PEARL: direct use.");
 			boolean thrown = PlayerInputActions.useMainHandItemDirect();
@@ -1104,25 +1110,6 @@ public final class AutoPearl {
 			currentThrowAtMs = serverNowMs() + timeUntilThrowMs(refreshed.flightTimeMs());
 		}
 		return true;
-	}
-
-	private static void applyAndSendRotation(Minecraft client, float yaw, float pitch) {
-		if (client == null || client.player == null) {
-			return;
-		}
-		float wrappedYaw = Mth.wrapDegrees(yaw);
-		float clampedPitch = Mth.clamp(pitch, -90.0F, 90.0F);
-		client.player.setYRot(wrappedYaw);
-		client.player.setXRot(clampedPitch);
-		client.player.setYHeadRot(wrappedYaw);
-		client.player.setYBodyRot(wrappedYaw);
-		if (client.player.connection != null) {
-			client.player.connection.send(new ServerboundMovePlayerPacket.Rot(
-					wrappedYaw,
-					clampedPitch,
-					client.player.onGround(),
-					client.player.horizontalCollision));
-		}
 	}
 
 	private static boolean waitedAfterAction(int minimumTicks) {

@@ -25,7 +25,6 @@ import net.minecraft.world.inventory.ClickType;
 public final class WardrobeKeybinds {
 	private static final int COOLDOWN_TICKS = 19;
 	private static final long SWAP_TIMEOUT_TICKS = 80L;
-	private static final String OVERLAY_TEXT = "Equiping Wardrobe";
 
 	private static int cwid = -1;
 	private static int index = 36;

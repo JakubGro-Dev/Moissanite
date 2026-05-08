@@ -112,7 +112,7 @@ public final class AutoDirection {
 	}
 
 	private static void rotateAndHyperionCast(double yaw, double pitch) {
-		RotationController.rotateYawPitch(yaw, pitch, 0.5D);
+		RotationController.rotateYawPitch(yaw, pitch, UiDefinitions.AUTO_DIRECTION_ROTATION_MULTIPLIER.get());
 		if (!Boolean.TRUE.equals(UiDefinitions.AUTO_DIRECTION_AUTO_HYPERION.get())) {
 			return;
 		}

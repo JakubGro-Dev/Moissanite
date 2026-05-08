@@ -52,23 +52,27 @@ public final class AutoExperimentMacro {
 	private static final int MACRO_TIMEOUT_TICKS = 12_000;
 	private static final int WAIT_AFTER_CLICK_TICKS = 5;
 	private static final int WAIT_AFTER_SWAP_TICKS = 2;
+	private static final int SUPERPAIRS_REVEAL_TIMEOUT_TICKS = 80;
+	private static final int MAX_ACTIVE_SUPERPAIRS_PAIR_CLICKS = 4;
+	private static final int MAX_SUPERPAIRS_ALTERNATING_SLOT_CLICKS = 6;
 	private static final int BOTTLE_CLICK_INTERVAL_TICKS = 4;
 	private static final int DEFAULT_UI_CLICK_DELAY_MS = 200;
 	private static final int MIN_UI_CLICK_DELAY_MS = 1;
 	private static final int MAX_UI_CLICK_DELAY_MS = 1_000;
 	private static final int DEFAULT_SUPERPAIRS_CLICK_DELAY_MS = 1_200;
 	private static final int DEFAULT_SUPERPAIRS_AFTER_PAIR_DELAY_MS = 3_000;
-	private static final int DEFAULT_SUPERPAIRS_PAIR_CLAIMS = 3;
+	private static final int DEFAULT_SUPERPAIRS_PAIR_CLAIMS = 1;
 	private static final int MIN_SUPERPAIRS_DELAY_MS = 0;
 	private static final int MAX_SUPERPAIRS_DELAY_MS = 10_000;
 	private static final int MIN_SUPERPAIRS_PAIR_CLAIMS = 1;
-	private static final int MAX_SUPERPAIRS_PAIR_CLAIMS = 20;
+	private static final int MAX_SUPERPAIRS_PAIR_CLAIMS = 1;
 	private static final int SUPERPAIRS_REMAINING_CLICKS_SCAN_CHARS = 20;
 	private static final double SUPERPAIRS_XP_FALLBACK_UNCOVERED_RATIO = 0.80D;
 	private static final int RENEW_EXPERIMENTS_LEVEL_COST = 50;
 	private static final int TITANIC_LEVEL_THRESHOLD = 110;
 	private static final double ROTATION_MULTIPLIER = 0.6D;
 	private static final double TABLE_AIM_Y_OFFSET = 1.0D;
+	private static final String PATCH_MARKER = "superpairs-single-claim-loop-breaker-2026-05-06";
 	private static final String GRAND_BOTTLE_ID = "GRAND_EXP_BOTTLE";
 	private static final String TITANIC_BOTTLE_ID = "TITANIC_EXP_BOTTLE";
 	private static final String[] SUPERPAIRS_EXTRA_CLAIM_TARGETS = {
@@ -178,8 +182,10 @@ public final class AutoExperimentMacro {
 	private static final Set<Integer> superpairsIgnoredPrioritySlots = new HashSet<>();
 	private static final Set<String> superpairsExhaustedPairKeys = new HashSet<>();
 	private static final Set<Integer> superpairsHandledInstantFindSlots = new HashSet<>();
+	private static final Set<String> superpairsLoggedStaleCacheDrops = new HashSet<>();
 	private static SuperpairsPair activeSuperpairsPair;
 	private static int activeSuperpairsPairClaimsRemaining;
+	private static int activeSuperpairsPairClickCount;
 	private static boolean superpairsInstantFindPending;
 	private static int superpairsInstantFindTargetSlot = -1;
 	private static int superpairsNoClicksFallbackClicks;
@@ -191,8 +197,16 @@ public final class AutoExperimentMacro {
 	private static int superpairsOpenPairSlot = -1;
 	private static String superpairsOpenPairMatchKey = "";
 	private static int lastSuperpairsBoardClickSlot = -1;
+	private static int lastSuperpairsLoopClickSlot = -1;
+	private static int superpairsLoopFirstSlot = -1;
+	private static int superpairsLoopSecondSlot = -1;
+	private static int superpairsAlternatingSlotClicks;
+	private static int superpairsPairLoopBreakTick = Integer.MIN_VALUE;
 	private static int lastUiClickTick = -ticksForDelayMs(DEFAULT_UI_CLICK_DELAY_MS);
 	private static int lastSuperpairsClickTick = -ticksForDelayMs(DEFAULT_SUPERPAIRS_CLICK_DELAY_MS);
+	private static int lastDebugSuperpairsRemainingClicks = Integer.MIN_VALUE;
+	private static String lastClaimDebugSignature = "";
+	private static String lastClickDebugSignature = "";
 
 	private AutoExperimentMacro() {
 	}
@@ -269,7 +283,7 @@ public final class AutoExperimentMacro {
 		GuiClickThrottle.reset();
 		resetSuperpairsState();
 		enterStep(MacroStep.FIND_TABLE);
-		sendMessage("Macro started.");
+		sendMessage("Macro started. Patch " + PATCH_MARKER + ".");
 	}
 
 	private static void handleClientTick(Minecraft client) {
@@ -444,7 +458,18 @@ public final class AutoExperimentMacro {
 		ChestMenu menu = currentMenu(client);
 		int slot = findSlotContaining(menu, entryName);
 		if (slot == -1) {
-			stopInternal("Could not find " + entryName + " in the table menu.");
+			if (stepElapsedTicks <= MENU_TIMEOUT_TICKS) {
+				debugWaitingForMainEntry(menu, entryName);
+				return;
+			}
+			if (isStaleExperimentationMainMenu(menu)) {
+				sendMessage("Reopening stale Experimentation Table menu while looking for " + entryName + ".");
+				closeScreen(client);
+				reopenTableThen(currentStep);
+				return;
+			}
+			stopInternal("Could not find " + entryName + " in the table menu. "
+					+ describeMenuForDebug(client, menu));
 			return;
 		}
 		if (clickSlot(client, menu, slot)) {
@@ -461,6 +486,14 @@ public final class AutoExperimentMacro {
 		}
 
 		ChestMenu menu = currentMenu(client);
+		int claimSlot = findClaimSlot(menu);
+		if (claimSlot != -1 && canClickOnInterval()) {
+			if (clickSlot(client, menu, claimSlot)) {
+				debugRewardClaim("Clicked pending reward claim slot before initial renewal " + claimSlot + ".");
+			}
+			return;
+		}
+
 		int renewSlot = findRenewExperimentsSlot(menu);
 		if (renewSlot == -1) {
 			enterStep(MacroStep.CLICK_CHRONOMATRON);
@@ -523,20 +556,21 @@ public final class AutoExperimentMacro {
 			String experimentTitle,
 			MacroStep waitMainStep,
 			MacroStep nextMainStep) {
-		if (isMainMenu(client)) {
-			enterStep(nextMainStep);
-			return;
-		}
-
 		ChestMenu menu = currentMenu(client);
 		if (menu != null) {
 			int claimSlot = findClaimSlot(menu);
 			if (claimSlot != -1 && canClickOnInterval()) {
 				if (clickSlot(client, menu, claimSlot)) {
+					debugRewardClaim("Clicked " + experimentTitle + " reward claim slot " + claimSlot + ".");
 					enterStep(waitMainStep);
 				}
 				return;
 			}
+		}
+
+		if (isMainMenu(client)) {
+			enterStep(nextMainStep);
+			return;
 		}
 
 		String title = currentTitle(client);
@@ -557,11 +591,6 @@ public final class AutoExperimentMacro {
 	}
 
 	private static void handleWaitForMainOrClaim(Minecraft client, MacroStep nextStep) {
-		if (isMainMenu(client)) {
-			enterStep(nextStep);
-			return;
-		}
-
 		ChestMenu menu = currentMenu(client);
 		if (menu == null) {
 			if (stepElapsedTicks >= WAIT_AFTER_CLICK_TICKS) {
@@ -574,9 +603,16 @@ public final class AutoExperimentMacro {
 		if (menu != null) {
 			int claimSlot = findClaimSlot(menu);
 			if (claimSlot != -1 && canClickOnInterval()) {
-				clickSlot(client, menu, claimSlot);
+				if (clickSlot(client, menu, claimSlot)) {
+					debugRewardClaim("Clicked lingering reward claim slot " + claimSlot + ".");
+				}
 				return;
 			}
+		}
+
+		if (isMainMenu(client)) {
+			enterStep(nextStep);
+			return;
 		}
 
 		if (stepElapsedTicks > MENU_TIMEOUT_TICKS) {
@@ -650,11 +686,6 @@ public final class AutoExperimentMacro {
 	}
 
 	private static void handleSolveSuperpairs(Minecraft client) {
-		if (isMainMenu(client)) {
-			enterStep(MacroStep.CHECK_RENEW_EXPERIMENTS);
-			return;
-		}
-
 		ChestMenu menu = currentMenu(client);
 		if (menu == null) {
 			if (stepElapsedTicks > MENU_TIMEOUT_TICKS) {
@@ -664,16 +695,23 @@ public final class AutoExperimentMacro {
 		}
 
 		String title = currentTitle(client);
-		if (title.contains("experiment over") || title.contains("superpairs rewards")) {
-			int claimSlot = findClaimSlot(menu);
-			if (claimSlot != -1 && canClickSuperpairs()) {
-				if (clickSuperpairsSlot(client, menu, claimSlot)) {
+		if (isRewardClaimTitle(title)) {
+			int claimSlot = findClaimSlot(menu, title);
+			if (claimSlot != -1) {
+				if (canClickSuperpairs() && clickSuperpairsSlot(client, menu, claimSlot)) {
 					lastSuperpairsClickTick = macroElapsedTicks;
+					debugRewardClaim("Clicked Superpairs reward claim slot " + claimSlot + ".");
 					enterStep(MacroStep.WAIT_AFTER_SUPERPAIRS_CLAIM);
 				}
+				return;
 			}
+		}
+
+		if (isMainMenu(client)) {
+			enterStep(MacroStep.CHECK_RENEW_EXPERIMENTS);
 			return;
 		}
+
 		if (!isSuperpairsRunningTitle(client)) {
 			if (stepElapsedTicks > MENU_TIMEOUT_TICKS) {
 				stopInternal("Unexpected Superpairs menu: " + title + ".");
@@ -687,6 +725,7 @@ public final class AutoExperimentMacro {
 		cacheVisibleSuperpairsRewards(menu);
 
 		int remainingClicks = readSuperpairsRemainingClicks(menu);
+		debugSuperpairsRemainingClicks(remainingClicks);
 		if (remainingClicks > 0) {
 			superpairsNoClicksFallbackClicks = 0;
 		}
@@ -706,13 +745,16 @@ public final class AutoExperimentMacro {
 			if (clickActiveSuperpairsPair(client, menu)) {
 				return;
 			}
+			if (superpairsPairLoopBreakTick == macroElapsedTicks) {
+				return;
+			}
 		}
 
 		if (isWaitingForSuperpairsPairConfirmation()) {
 			SuperpairsPair openPair = findOpenSuperpairsPair(menu, xpFallbackReady);
 			if (openPair != null) {
 				boolean instantFindPair = superpairsInstantFindTargetSlot == superpairsOpenPairSlot;
-				startSuperpairsPair(openPair, true);
+				startSuperpairsPair(openPair, true, remainingClicks);
 				if (instantFindPair) {
 					superpairsInstantFindTargetSlot = -1;
 				}
@@ -720,21 +762,21 @@ public final class AutoExperimentMacro {
 				return;
 			}
 
-			if (clickNextSuperpairsDiscovery(client, menu)) {
+			if (clickNextSuperpairsDiscovery(client, menu) || superpairsPairLoopBreakTick == macroElapsedTicks) {
 				return;
 			}
 		}
 
 		SuperpairsPair revealedPriorityPair = findLastRevealedPriorityPair(menu);
 		if (revealedPriorityPair != null && isNextSuperpairsClickStartingPair()) {
-			startSuperpairsPair(revealedPriorityPair, false);
+			startSuperpairsPair(revealedPriorityPair, false, remainingClicks);
 			clickActiveSuperpairsPair(client, menu);
 			return;
 		}
 
 		SuperpairsPair pair = scanSuperpairsBoard(menu);
 		if (pair != null && isNextSuperpairsClickStartingPair()) {
-			startSuperpairsPair(pair);
+			startSuperpairsPair(pair, false, remainingClicks);
 			clickActiveSuperpairsPair(client, menu);
 			return;
 		}
@@ -743,14 +785,14 @@ public final class AutoExperimentMacro {
 				&& xpFallbackReady) {
 			SuperpairsPair xpPair = findHighestEnchantingXpPair(menu);
 			if (xpPair != null) {
-				startSuperpairsPair(xpPair, false);
+				startSuperpairsPair(xpPair, false, remainingClicks);
 				clickActiveSuperpairsPair(client, menu);
 				return;
 			}
 
 			SuperpairsPair revealedXpPair = findLastRevealedEnchantingXpPair(menu);
 			if (revealedXpPair != null) {
-				startSuperpairsPair(revealedXpPair, false);
+				startSuperpairsPair(revealedXpPair, false, remainingClicks);
 				clickActiveSuperpairsPair(client, menu);
 				return;
 			}
@@ -760,16 +802,24 @@ public final class AutoExperimentMacro {
 	}
 
 	private static void handleWaitAfterSuperpairsClaim(Minecraft client) {
-		if (isMainMenu(client)) {
-			enterStep(MacroStep.CHECK_RENEW_EXPERIMENTS);
-			return;
-		}
-
 		ChestMenu menu = currentMenu(client);
 		if (menu == null) {
 			if (stepElapsedTicks >= WAIT_AFTER_CLICK_TICKS) {
 				reopenTableThen(MacroStep.CHECK_RENEW_EXPERIMENTS);
 			}
+			return;
+		}
+
+		int claimSlot = findClaimSlot(menu);
+		if (claimSlot != -1 && canClickOnInterval()) {
+			if (clickSlot(client, menu, claimSlot)) {
+				debugRewardClaim("Clicked repeated Superpairs reward claim slot " + claimSlot + ".");
+			}
+			return;
+		}
+
+		if (isMainMenu(client)) {
+			enterStep(MacroStep.CHECK_RENEW_EXPERIMENTS);
 			return;
 		}
 
@@ -779,9 +829,19 @@ public final class AutoExperimentMacro {
 	}
 
 	private static void handleCheckRenewExperiments(Minecraft client) {
+		ChestMenu visibleMenu = currentMenu(client);
+		if (visibleMenu != null) {
+			int claimSlot = findClaimSlot(visibleMenu);
+			if (claimSlot != -1 && canClickOnInterval()) {
+				if (clickSlot(client, visibleMenu, claimSlot)) {
+					debugRewardClaim("Clicked reward claim slot before renewal check " + claimSlot + ".");
+				}
+				return;
+			}
+		}
+
 		if (!isMainMenu(client)) {
-			ChestMenu menu = currentMenu(client);
-			if (menu == null) {
+			if (visibleMenu == null) {
 				if (stepElapsedTicks >= WAIT_AFTER_CLICK_TICKS) {
 					reopenTableThen(MacroStep.CHECK_RENEW_EXPERIMENTS);
 				}
@@ -811,14 +871,13 @@ public final class AutoExperimentMacro {
 	}
 
 	private static void handleWaitAfterRenewExperiments(Minecraft client) {
-		if (isMainMenu(client) && stepElapsedTicks >= WAIT_AFTER_CLICK_TICKS) {
+		if (stepElapsedTicks >= WAIT_AFTER_CLICK_TICKS) {
 			macroElapsedTicks = 0;
 			resetSuperpairsState();
-			enterStep(MacroStep.CLICK_CHRONOMATRON);
-			return;
-		}
-
-		if (currentMenu(client) == null && stepElapsedTicks >= WAIT_AFTER_CLICK_TICKS) {
+			if (currentMenu(client) != null) {
+				sendMessage("Reopening table after renewal to refresh menu.");
+				closeScreen(client);
+			}
 			reopenTableThen(MacroStep.CLICK_CHRONOMATRON);
 			return;
 		}
@@ -870,10 +929,24 @@ public final class AutoExperimentMacro {
 			return true;
 		}
 
-		int slot = findVisibleSuperpairsPriorityRewardSlot(menu);
+		if (isWaitingForSuperpairsPairConfirmation()) {
+			SuperpairsPair openPair = findOpenSuperpairsPair(menu, true);
+			if (openPair != null) {
+				startSuperpairsPair(openPair, true);
+				superpairsInstantFindPending = false;
+				superpairsInstantFindTargetSlot = -1;
+				if (clickActiveSuperpairsPair(client, menu)) {
+					sendMessage("Instant Find clicked matching open reward for " + openPair.reward() + ".");
+				}
+				return true;
+			}
+		}
+
+		int excludedSlot = superpairsOpenPairSlot;
+		int slot = findVisibleSuperpairsPriorityRewardSlot(menu, excludedSlot);
 		String target = "priority reward";
 		if (slot == -1) {
-			slot = findHighestVisibleEnchantingXpSlot(menu);
+			slot = findHighestVisibleEnchantingXpSlot(menu, excludedSlot);
 			target = "highest enchanting XP";
 		}
 		if (slot == -1) {
@@ -921,6 +994,11 @@ public final class AutoExperimentMacro {
 
 		lastSuperpairsRevealSlot = pendingSuperpairsRevealSlot;
 		if (isSuperpairsNonPairPowerup(stack)) {
+			if (pendingSuperpairsActivePairConfirm) {
+				debugRewardClaim("Expected active pair confirmation at slot " + pendingSuperpairsRevealSlot
+						+ " but revealed a powerup.");
+				clearActiveSuperpairsPair();
+			}
 			if (isSuperpairsInstantFindPowerup(stack)) {
 				superpairsHandledInstantFindSlots.add(pendingSuperpairsRevealSlot);
 				superpairsInstantFindPending = true;
@@ -931,10 +1009,19 @@ public final class AutoExperimentMacro {
 			return false;
 		}
 
+		String revealedMatchKey = superpairsVisiblePairMatchKey(stack);
 		cacheVisibleSuperpairsReward(pendingSuperpairsRevealSlot, stack);
 		applySuperpairsEffectiveClick(pendingSuperpairsRevealSlot, stack);
-		if (pendingSuperpairsActivePairConfirm && isNextSuperpairsClickStartingPair()) {
-			completeActiveSuperpairsPairClaim();
+		if (pendingSuperpairsActivePairConfirm) {
+			if (activeSuperpairsPair != null
+					&& activeSuperpairsPair.matchKey().equals(revealedMatchKey)
+					&& isNextSuperpairsClickStartingPair()) {
+				completeActiveSuperpairsPairClaim();
+			} else {
+				debugRewardClaim("Expected active pair confirmation at slot " + pendingSuperpairsRevealSlot
+						+ " but revealed \"" + superpairsRewardName(stack) + "\".");
+				clearActiveSuperpairsPair();
+			}
 		}
 		pendingSuperpairsRevealSlot = -1;
 		pendingSuperpairsActivePairConfirm = false;
@@ -942,9 +1029,12 @@ public final class AutoExperimentMacro {
 	}
 
 	private static boolean waitForPendingSuperpairsReveal() {
-		if (macroElapsedTicks - pendingSuperpairsRevealTick <= WAIT_AFTER_CLICK_TICKS) {
+		int waitedTicks = macroElapsedTicks - pendingSuperpairsRevealTick;
+		if (waitedTicks <= SUPERPAIRS_REVEAL_TIMEOUT_TICKS) {
 			return true;
 		}
+		debugRewardClaim("Timed out waiting for Superpairs slot " + pendingSuperpairsRevealSlot + " to reveal.");
+		superpairsClickedRevealSlots.remove(pendingSuperpairsRevealSlot);
 		pendingSuperpairsRevealSlot = -1;
 		pendingSuperpairsActivePairConfirm = false;
 		return false;
@@ -1089,9 +1179,11 @@ public final class AutoExperimentMacro {
 		if ((superpairsEffectivePairClicks % 2) == 1) {
 			superpairsOpenPairSlot = slot;
 			superpairsOpenPairMatchKey = matchKey;
+			sendMessage("Superpairs opened slot " + slot + " as " + superpairsRewardName(stack) + ".");
 			return;
 		}
 
+		sendMessage("Superpairs confirmed slot " + slot + " as " + superpairsRewardName(stack) + ".");
 		superpairsOpenPairSlot = -1;
 		superpairsOpenPairMatchKey = "";
 	}
@@ -1186,12 +1278,43 @@ public final class AutoExperimentMacro {
 	}
 
 	private static boolean slotMatchesSuperpairsMatchKey(ChestMenu menu, int slotIndex, String matchKey) {
-		SuperpairsCachedReward cached = cachedSuperpairsReward(slotIndex);
-		if (cached != null && matchKey.equals(cached.matchKey())) {
-			return isSuperpairsClickableSlot(menu, slotIndex);
-		}
 		ItemStack stack = stackAt(menu, slotIndex);
-		return !matchKey.isBlank() && matchKey.equals(superpairsVisiblePairMatchKey(stack));
+		if (stack.isEmpty() || matchKey == null || matchKey.isBlank()) {
+			return false;
+		}
+
+		String visibleMatchKey = superpairsVisiblePairMatchKey(stack);
+		if (!visibleMatchKey.isBlank()) {
+			boolean matches = matchKey.equals(visibleMatchKey);
+			if (!matches) {
+				dropStaleSuperpairsCache(slotIndex, "visible mismatch");
+			}
+			return matches;
+		}
+
+		if (isSuperpairsHiddenTile(stack)) {
+			SuperpairsCachedReward cached = cachedSuperpairsReward(slotIndex);
+			return cached != null && matchKey.equals(cached.matchKey());
+		}
+
+		dropStaleSuperpairsCache(slotIndex, "no visible pair key");
+		return false;
+	}
+
+	private static void dropStaleSuperpairsCache(int slotIndex, String reason) {
+		SuperpairsCachedReward removed = superpairsCachedRewardsBySlot.remove(slotIndex);
+		superpairsKnownHighTierSlots.remove(slotIndex);
+		superpairsClickedRevealSlots.remove(slotIndex);
+		if (removed != null) {
+			Integer firstSlot = superpairsFirstSlotsByEnchant.get(removed.reward());
+			if (firstSlot != null && firstSlot == slotIndex) {
+				superpairsFirstSlotsByEnchant.remove(removed.reward());
+			}
+			String signature = slotIndex + "|" + reason + "|" + removed.matchKey();
+			if (superpairsLoggedStaleCacheDrops.add(signature)) {
+				sendMessage("Dropped stale Superpairs cache for slot " + slotIndex + " (" + reason + ").");
+			}
+		}
 	}
 
 	private static SuperpairsCachedReward cachedSuperpairsReward(int slotIndex) {
@@ -1222,17 +1345,26 @@ public final class AutoExperimentMacro {
 			clearActiveSuperpairsPair();
 			return;
 		}
-		startSuperpairsPair(pair, firstClickAlreadyUsed, remainingClaims);
+		startSuperpairsPair(pair, firstClickAlreadyUsed, -1);
 	}
 
-	private static void startSuperpairsPair(SuperpairsPair pair, boolean firstClickAlreadyUsed, int pairClaims) {
+	private static void startSuperpairsPair(SuperpairsPair pair, boolean firstClickAlreadyUsed, int remainingClicks) {
 		if (pair == null) {
 			clearActiveSuperpairsPair();
 			return;
 		}
+		int remainingPairClaims = remainingSuperpairsPairClaims(pair);
+		int clickLimitedClaims = superpairsPairClaimsAllowedByClicks(firstClickAlreadyUsed, remainingClicks);
+		int safePairClaims = Math.min(1, Math.min(remainingPairClaims, clickLimitedClaims));
+		if (safePairClaims <= 0) {
+			markSuperpairsPairExhausted(pair);
+			clearActiveSuperpairsPair();
+			return;
+		}
+
 		activeSuperpairsPair = pair;
-		int safePairClaims = Math.max(1, Math.min(pairClaims, remainingSuperpairsPairClaims(pair)));
 		activeSuperpairsPairClaimsRemaining = safePairClaims;
+		activeSuperpairsPairClickCount = 0;
 		lastSuperpairsRevealSlot = -1;
 		if (firstClickAlreadyUsed) {
 			superpairsOpenPairSlot = pair.firstSlot();
@@ -1245,8 +1377,24 @@ public final class AutoExperimentMacro {
 		}
 	}
 
+	private static int superpairsPairClaimsAllowedByClicks(boolean firstClickAlreadyUsed, int remainingClicks) {
+		if (remainingClicks < 0) {
+			return Integer.MAX_VALUE;
+		}
+		if (firstClickAlreadyUsed) {
+			return remainingClicks <= 0 ? 0 : 1 + Math.max(0, (remainingClicks - 1) / 2);
+		}
+		return remainingClicks / 2;
+	}
+
 	private static boolean clickActiveSuperpairsPair(Minecraft client, ChestMenu menu) {
 		if (activeSuperpairsPair == null) {
+			return false;
+		}
+		if (isSuperpairsPairExhausted(activeSuperpairsPair.matchKey(),
+				activeSuperpairsPair.firstSlot(),
+				activeSuperpairsPair.secondSlot())) {
+			clearActiveSuperpairsPair();
 			return false;
 		}
 		if (!canClickSuperpairs()) {
@@ -1260,7 +1408,7 @@ public final class AutoExperimentMacro {
 				return false;
 			}
 			boolean hiddenConfirm = isSuperpairsHiddenSlot(menu, confirmSlot);
-			if (!clickKnownSuperpairsSlot(client, menu, confirmSlot, true, true)) {
+			if (!clickActiveSuperpairsPairSlot(client, menu, confirmSlot, true, true)) {
 				return true;
 			}
 
@@ -1277,7 +1425,8 @@ public final class AutoExperimentMacro {
 				clearActiveSuperpairsPair();
 				return false;
 			}
-			return clickKnownSuperpairsSlot(client, menu, startSlot, false, false);
+			return clickActiveSuperpairsPairSlot(client, menu, startSlot, false, false)
+					|| superpairsPairLoopBreakTick == macroElapsedTicks;
 		}
 
 		int confirmSlot = activeSuperpairsConfirmSlot(menu, activeSuperpairsPair);
@@ -1286,12 +1435,33 @@ public final class AutoExperimentMacro {
 			return false;
 		}
 		boolean hiddenConfirm = isSuperpairsHiddenSlot(menu, confirmSlot);
-		if (!clickKnownSuperpairsSlot(client, menu, confirmSlot, true, true)) {
+		if (!clickActiveSuperpairsPairSlot(client, menu, confirmSlot, true, true)) {
 			return true;
 		}
 
 		if (!hiddenConfirm) {
 			completeActiveSuperpairsPairClaim();
+		}
+		return true;
+	}
+
+	private static boolean clickActiveSuperpairsPairSlot(
+			Minecraft client,
+			ChestMenu menu,
+			int slot,
+			boolean afterPairDelay,
+			boolean activePairConfirm) {
+		if (!clickKnownSuperpairsSlot(client, menu, slot, afterPairDelay, activePairConfirm)) {
+			return false;
+		}
+		activeSuperpairsPairClickCount++;
+		if (activeSuperpairsPairClickCount > MAX_ACTIVE_SUPERPAIRS_PAIR_CLICKS && activeSuperpairsPair != null) {
+			sendMessage("Breaking repeated Superpairs pair loop for " + activeSuperpairsPair.reward()
+					+ " at slots " + activeSuperpairsPair.firstSlot() + "/" + activeSuperpairsPair.secondSlot()
+					+ " after " + activeSuperpairsPairClickCount + " clicks.");
+			superpairsPairLoopBreakTick = macroElapsedTicks;
+			finishActiveSuperpairsPair();
+			return false;
 		}
 		return true;
 	}
@@ -1304,17 +1474,21 @@ public final class AutoExperimentMacro {
 	}
 
 	private static void completeActiveSuperpairsPairClaim() {
+		if (activeSuperpairsPair == null) {
+			return;
+		}
 		int completedClaims = recordSuperpairsPairClaim(activeSuperpairsPair);
 		activeSuperpairsPairClaimsRemaining--;
-		if (activeSuperpairsPairClaimsRemaining <= 0
-				|| completedClaims >= configuredSuperpairsPairClaims()) {
-			finishActiveSuperpairsPair();
-		}
+		sendMessage("Completed Superpairs pair " + activeSuperpairsPair.reward()
+				+ " at slots " + activeSuperpairsPair.firstSlot() + "/" + activeSuperpairsPair.secondSlot()
+				+ " claim " + completedClaims + ".");
+		finishActiveSuperpairsPair();
 	}
 
 	private static void clearActiveSuperpairsPair() {
 		activeSuperpairsPair = null;
 		activeSuperpairsPairClaimsRemaining = 0;
+		activeSuperpairsPairClickCount = 0;
 		superpairsInstantFindTargetSlot = -1;
 	}
 
@@ -1328,6 +1502,7 @@ public final class AutoExperimentMacro {
 		superpairsFirstSlotsByEnchant.remove(activeSuperpairsPair.reward());
 		activeSuperpairsPair = null;
 		activeSuperpairsPairClaimsRemaining = 0;
+		activeSuperpairsPairClickCount = 0;
 		superpairsInstantFindTargetSlot = -1;
 	}
 
@@ -1477,6 +1652,22 @@ public final class AutoExperimentMacro {
 				|| superpairsPairClaimCounts.getOrDefault(key, 0) >= configuredSuperpairsPairClaims();
 	}
 
+	private static boolean isSuperpairsSlotInExhaustedPair(ChestMenu menu, int slotIndex, String matchKey) {
+		if (menu == null || matchKey == null || matchKey.isBlank()) {
+			return false;
+		}
+		for (int otherSlot : SUPERPAIRS_BOARD_SLOTS) {
+			if (otherSlot == slotIndex) {
+				continue;
+			}
+			if (isSuperpairsPairExhausted(matchKey, slotIndex, otherSlot)
+					&& slotMatchesSuperpairsMatchKey(menu, otherSlot, matchKey)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	private static int remainingSuperpairsPairClaims(SuperpairsPair pair) {
 		if (pair == null) {
 			return 0;
@@ -1525,12 +1716,22 @@ public final class AutoExperimentMacro {
 	}
 
 	private static int findVisibleSuperpairsPriorityRewardSlot(ChestMenu menu) {
+		return findVisibleSuperpairsPriorityRewardSlot(menu, -1);
+	}
+
+	private static int findVisibleSuperpairsPriorityRewardSlot(ChestMenu menu, int excludedSlot) {
 		if (menu == null) {
 			return -1;
 		}
 		for (int slotIndex : SUPERPAIRS_BOARD_SLOTS) {
+			if (slotIndex == excludedSlot) {
+				continue;
+			}
 			SuperpairsCachedReward cached = cachedSuperpairsReward(slotIndex);
-			if (cached == null || !cached.priority() || superpairsIgnoredPrioritySlots.contains(slotIndex)) {
+			if (cached == null
+					|| !cached.priority()
+					|| superpairsIgnoredPrioritySlots.contains(slotIndex)
+					|| isSuperpairsSlotInExhaustedPair(menu, slotIndex, cached.matchKey())) {
 				continue;
 			}
 			if (isSuperpairsClickableSlot(menu, slotIndex)) {
@@ -1541,6 +1742,10 @@ public final class AutoExperimentMacro {
 	}
 
 	private static int findHighestVisibleEnchantingXpSlot(ChestMenu menu) {
+		return findHighestVisibleEnchantingXpSlot(menu, -1);
+	}
+
+	private static int findHighestVisibleEnchantingXpSlot(ChestMenu menu, int excludedSlot) {
 		if (menu == null) {
 			return -1;
 		}
@@ -1548,10 +1753,14 @@ public final class AutoExperimentMacro {
 		int bestSlot = -1;
 		int bestXp = 0;
 		for (int slotIndex : SUPERPAIRS_BOARD_SLOTS) {
+			if (slotIndex == excludedSlot) {
+				continue;
+			}
 			SuperpairsCachedReward cached = cachedSuperpairsReward(slotIndex);
 			if (cached == null
 					|| cached.xpValue() <= 0
 					|| superpairsIgnoredPrioritySlots.contains(slotIndex)
+					|| isSuperpairsSlotInExhaustedPair(menu, slotIndex, cached.matchKey())
 					|| !isSuperpairsClickableSlot(menu, slotIndex)) {
 				continue;
 			}
@@ -2537,50 +2746,152 @@ public final class AutoExperimentMacro {
 	}
 
 	private static int findClaimSlot(ChestMenu menu) {
+		return findClaimSlot(menu, currentTitle(Minecraft.getInstance()));
+	}
+
+	static int findClaimSlot(ChestMenu menu, String title) {
 		if (menu == null) {
 			return -1;
 		}
+		String normalizedTitle = TextNormalizer.normalize(title);
+		int explicitSlot = findExplicitClaimSlot(menu);
+		if (explicitSlot != -1) {
+			debugClaimDecision("explicit", normalizedTitle, explicitSlot, stackAt(menu, explicitSlot));
+			return explicitSlot;
+		}
+		if (isRewardClaimTitle(normalizedTitle)) {
+			int fallbackSlot = findExperimentOverClaimSlot(menu);
+			if (fallbackSlot != -1) {
+				debugClaimDecision("fallback", normalizedTitle, fallbackSlot, stackAt(menu, fallbackSlot));
+			}
+			return fallbackSlot;
+		}
+		return -1;
+	}
+
+	private static int findExplicitClaimSlot(ChestMenu menu) {
 		int maxSlot = containerSlotCount(menu);
 		for (int slotIndex = 0; slotIndex < maxSlot; slotIndex++) {
 			Slot slot = menu.slots.get(slotIndex);
 			if (slot == null || !slot.hasItem()) {
 				continue;
 			}
-			String text = normalizedStackText(slot.getItem());
-			if (text.contains("claim reward")
-					|| text.contains("claim rewards")
-					|| text.contains("click to claim")) {
+			if (isExplicitClaimStack(slot.getItem())) {
 				return slotIndex;
 			}
-		}
-		String title = currentTitle(Minecraft.getInstance());
-		if (title.contains("experiment over") || title.contains("superpairs rewards")) {
-			return findExperimentOverClaimSlot(menu);
 		}
 		return -1;
 	}
 
+	private static boolean isExplicitClaimStack(ItemStack stack) {
+		String text = normalizedStackText(stack);
+		return text.contains("claim reward")
+				|| text.contains("claim rewards")
+				|| text.contains("claim your reward")
+				|| text.contains("click to claim")
+				|| text.contains("claim all");
+	}
+
+	private static boolean isRewardClaimTitle(String title) {
+		if (title == null || title.isBlank()) {
+			return false;
+		}
+		return title.contains("experiment over")
+				|| title.contains("superpairs rewards")
+				|| title.contains("claim reward")
+				|| title.contains("claim rewards");
+	}
+
 	private static int findExperimentOverClaimSlot(ChestMenu menu) {
 		int maxSlot = containerSlotCount(menu);
+		int bestSlot = -1;
+		int bestScore = 0;
 		for (int slotIndex = 0; slotIndex < maxSlot; slotIndex++) {
 			Slot slot = menu.slots.get(slotIndex);
 			if (slot == null || !slot.hasItem()) {
 				continue;
 			}
 			ItemStack stack = slot.getItem();
-			String path = itemPath(stack);
-			if (path.equals("redstone_block") || path.equals("barrier")) {
-				continue;
-			}
-			String text = normalizedStackText(stack);
-			if (path.contains("player_head")
-					|| text.contains("game closed")
-					|| text.contains("highest series")
-					|| text.contains("rewards")) {
-				return slotIndex;
+			int score = claimFallbackScore(slotIndex, stack);
+			if (score > bestScore
+					|| (score == bestScore && bestSlot != -1 && isCommonClaimSlot(slotIndex) && !isCommonClaimSlot(bestSlot))) {
+				bestSlot = slotIndex;
+				bestScore = score;
 			}
 		}
-		return -1;
+		return bestScore > 0 ? bestSlot : -1;
+	}
+
+	private static int claimFallbackScore(int slotIndex, ItemStack stack) {
+		if (stack == null || stack.isEmpty()) {
+			return 0;
+		}
+		String path = itemPath(stack);
+		if (path.equals("redstone_block") || path.equals("barrier")) {
+			return 0;
+		}
+
+		String name = normalizedStackName(stack);
+		String text = normalizedStackText(stack);
+		boolean mentionsReward = text.contains("reward") || text.contains("rewards");
+		boolean strongActionText = text.contains("claim") || text.contains("collect");
+		boolean genericClickReward = text.contains("click") && mentionsReward;
+		boolean mentionsAction = strongActionText || genericClickReward;
+		if (!mentionsReward && !mentionsAction) {
+			return 0;
+		}
+		boolean actionItem = isClaimActionItemPath(path);
+		boolean commonHead = path.contains("player_head") && isCommonClaimSlot(slotIndex);
+		if (!strongActionText && !actionItem && !commonHead) {
+			return 0;
+		}
+
+		int score = 0;
+		if (strongActionText && mentionsReward) {
+			score += 80;
+		} else if (genericClickReward) {
+			score += 20;
+		}
+		if (name.contains("claim") || name.contains("reward")) {
+			score += 30;
+		}
+		if (actionItem) {
+			score += 25;
+		}
+		if (commonHead && mentionsReward) {
+			score += 18;
+		}
+		if (isCommonClaimSlot(slotIndex)) {
+			score += 8;
+		}
+		return score;
+	}
+
+	private static boolean isClaimActionItemPath(String path) {
+		if (path == null || path.isBlank()) {
+			return false;
+		}
+		return path.equals("emerald")
+				|| path.equals("emerald_block")
+				|| path.equals("chest")
+				|| path.equals("ender_chest")
+				|| path.equals("experience_bottle")
+				|| path.equals("lime_dye")
+				|| path.equals("green_dye")
+				|| path.equals("lime_wool")
+				|| path.equals("green_wool")
+				|| path.equals("lime_concrete")
+				|| path.equals("green_concrete")
+				|| path.equals("lime_terracotta")
+				|| path.equals("green_terracotta")
+				|| path.equals("lime_stained_glass")
+				|| path.equals("green_stained_glass")
+				|| path.equals("lime_stained_glass_pane")
+				|| path.equals("green_stained_glass_pane");
+	}
+
+	private static boolean isCommonClaimSlot(int slotIndex) {
+		return slotIndex == 22 || slotIndex == 31 || slotIndex == 49;
 	}
 
 	private static int findRenewExperimentsSlot(ChestMenu menu) {
@@ -2650,6 +2961,15 @@ public final class AutoExperimentMacro {
 			}
 		}
 		return false;
+	}
+
+	private static boolean isStaleExperimentationMainMenu(ChestMenu menu) {
+		return menu != null
+				&& findSlotContaining(menu, CHRONOMATRON_TITLE) == -1
+				&& findSlotContaining(menu, ULTRASEQUENCER_TITLE) == -1
+				&& findSlotContaining(menu, "superpairs") == -1
+				&& findRenewExperimentsSlot(menu) == -1
+				&& !menuContains(menu, "completed");
 	}
 
 	private static int containerSlotCount(ChestMenu menu) {
@@ -2797,17 +3117,112 @@ public final class AutoExperimentMacro {
 			return false;
 		}
 		lastUiClickTick = macroElapsedTicks;
+		debugSlotClick("ui", client, slot);
 		return true;
 	}
 
 	private static boolean clickSuperpairsSlot(Minecraft client, ChestMenu menu, int slot) {
 		int clickDelayMs = configuredSuperpairsClickDelayMs();
-		return GuiClickThrottle.clickSlotLikeUser(
+		boolean clicked = GuiClickThrottle.clickSlotLikeUser(
 				client,
 				menu,
 				slot,
 				clickDelayMs,
 				clickDelayMs);
+		if (clicked) {
+			debugSlotClick("superpairs", client, slot);
+			if (!recordSuperpairsBoardClickLoop(client, slot)) {
+				return false;
+			}
+		}
+		return clicked;
+	}
+
+	private static boolean recordSuperpairsBoardClickLoop(Minecraft client, int slot) {
+		if (!isSuperpairsRunningTitle(client) || !isSuperpairsBoardSlot(slot)) {
+			return true;
+		}
+
+		int previousSlot = lastSuperpairsLoopClickSlot;
+		if (previousSlot == -1 || previousSlot == slot) {
+			lastSuperpairsLoopClickSlot = slot;
+			superpairsLoopFirstSlot = slot;
+			superpairsLoopSecondSlot = -1;
+			superpairsAlternatingSlotClicks = 1;
+			return true;
+		}
+
+		if (superpairsLoopFirstSlot == -1 || superpairsLoopSecondSlot == -1) {
+			superpairsLoopFirstSlot = previousSlot;
+			superpairsLoopSecondSlot = slot;
+			superpairsAlternatingSlotClicks = 2;
+		} else {
+			int expectedSlot = (superpairsAlternatingSlotClicks % 2) == 0
+					? superpairsLoopFirstSlot
+					: superpairsLoopSecondSlot;
+			if (slot == expectedSlot) {
+				superpairsAlternatingSlotClicks++;
+			} else {
+				superpairsLoopFirstSlot = previousSlot;
+				superpairsLoopSecondSlot = slot;
+				superpairsAlternatingSlotClicks = 2;
+			}
+		}
+
+		lastSuperpairsLoopClickSlot = slot;
+		if (superpairsAlternatingSlotClicks >= MAX_SUPERPAIRS_ALTERNATING_SLOT_CLICKS) {
+			breakSuperpairsSlotLoop();
+			return false;
+		}
+		return true;
+	}
+
+	private static void breakSuperpairsSlotLoop() {
+		int firstSlot = superpairsLoopFirstSlot;
+		int secondSlot = superpairsLoopSecondSlot;
+		sendMessage("Ignoring repeating Superpairs slot loop " + firstSlot + "/" + secondSlot + " and continuing.");
+		markSuperpairsLoopPairExhausted(firstSlot, secondSlot);
+		if (activeSuperpairsPair != null) {
+			finishActiveSuperpairsPair();
+		}
+		clearSuperpairsOpenPairState();
+		pendingSuperpairsRevealSlot = -1;
+		pendingSuperpairsActivePairConfirm = false;
+		lastSuperpairsRevealSlot = -1;
+		lastSuperpairsClickTick = macroElapsedTicks;
+		superpairsPairLoopBreakTick = macroElapsedTicks;
+		resetSuperpairsAlternatingLoopState();
+	}
+
+	private static void markSuperpairsLoopPairExhausted(int firstSlot, int secondSlot) {
+		SuperpairsCachedReward first = cachedSuperpairsReward(firstSlot);
+		SuperpairsCachedReward second = cachedSuperpairsReward(secondSlot);
+		if (first != null && second != null
+				&& !first.matchKey().isBlank()
+				&& first.matchKey().equals(second.matchKey())) {
+			superpairsExhaustedPairKeys.add(superpairsPairKey(first.matchKey(), firstSlot, secondSlot));
+		}
+	}
+
+	private static void clearSuperpairsOpenPairState() {
+		superpairsOpenPairSlot = -1;
+		superpairsOpenPairMatchKey = "";
+	}
+
+	private static void resetSuperpairsAlternatingLoopState() {
+		lastSuperpairsLoopClickSlot = -1;
+		superpairsLoopFirstSlot = -1;
+		superpairsLoopSecondSlot = -1;
+		superpairsAlternatingSlotClicks = 0;
+	}
+
+	private static boolean isSuperpairsBoardSlot(int slot) {
+		for (int boardSlot : SUPERPAIRS_BOARD_SLOTS) {
+			if (boardSlot == slot) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static boolean canClickUiSlot() {
@@ -2930,9 +3345,13 @@ public final class AutoExperimentMacro {
 	}
 
 	private static void enterStep(MacroStep step) {
+		MacroStep previousStep = currentStep;
 		currentStep = step;
 		stepElapsedTicks = 0;
 		stepStarted = false;
+		if (running && previousStep != step) {
+			sendMessage("Step " + previousStep + " -> " + step + ".");
+		}
 	}
 
 	private static void finishMacro() {
@@ -2975,8 +3394,10 @@ public final class AutoExperimentMacro {
 		superpairsIgnoredPrioritySlots.clear();
 		superpairsExhaustedPairKeys.clear();
 		superpairsHandledInstantFindSlots.clear();
+		superpairsLoggedStaleCacheDrops.clear();
 		activeSuperpairsPair = null;
 		activeSuperpairsPairClaimsRemaining = 0;
+		activeSuperpairsPairClickCount = 0;
 		superpairsInstantFindPending = false;
 		superpairsInstantFindTargetSlot = -1;
 		superpairsNoClicksFallbackClicks = 0;
@@ -2985,11 +3406,15 @@ public final class AutoExperimentMacro {
 		pendingSuperpairsRevealTick = 0;
 		pendingSuperpairsActivePairConfirm = false;
 		superpairsEffectivePairClicks = 0;
-		superpairsOpenPairSlot = -1;
-		superpairsOpenPairMatchKey = "";
+		clearSuperpairsOpenPairState();
 		lastSuperpairsBoardClickSlot = -1;
+		resetSuperpairsAlternatingLoopState();
+		superpairsPairLoopBreakTick = Integer.MIN_VALUE;
 		lastUiClickTick = -configuredUiClickDelayTicks();
 		lastSuperpairsClickTick = -configuredSuperpairsClickDelayTicks();
+		lastDebugSuperpairsRemainingClicks = Integer.MIN_VALUE;
+		lastClaimDebugSignature = "";
+		lastClickDebugSignature = "";
 	}
 
 	private static String formatVec(Vec3 vec) {
@@ -2999,11 +3424,94 @@ public final class AutoExperimentMacro {
 		return String.format(java.util.Locale.ROOT, "%.1f %.1f %.1f", vec.x, vec.y, vec.z);
 	}
 
+	private static void debugWaitingForMainEntry(ChestMenu menu, String entryName) {
+		if (stepElapsedTicks != 1 && stepElapsedTicks % 20 != 0) {
+			return;
+		}
+		sendMessage("Waiting for " + entryName + " in table menu. " + describeMenuSlotsForDebug(menu));
+	}
+
+	private static String describeMenuForDebug(Minecraft client, ChestMenu menu) {
+		return "title=\"" + currentTitle(client) + "\" " + describeMenuSlotsForDebug(menu);
+	}
+
+	private static String describeMenuSlotsForDebug(ChestMenu menu) {
+		if (menu == null) {
+			return "slots=<no chest menu>";
+		}
+		int maxSlot = containerSlotCount(menu);
+		StringBuilder builder = new StringBuilder("slots=");
+		int described = 0;
+		for (int slotIndex = 0; slotIndex < maxSlot && described < 8; slotIndex++) {
+			Slot slot = menu.slots.get(slotIndex);
+			if (slot == null || !slot.hasItem()) {
+				continue;
+			}
+			if (described > 0) {
+				builder.append(", ");
+			}
+			builder.append(slotIndex).append(':').append(normalizedStackName(slot.getItem()));
+			described++;
+		}
+		if (described == 0) {
+			builder.append("<empty>");
+		}
+		return builder.toString();
+	}
+
+	private static void debugSuperpairsRemainingClicks(int remainingClicks) {
+		if (remainingClicks == lastDebugSuperpairsRemainingClicks) {
+			return;
+		}
+		lastDebugSuperpairsRemainingClicks = remainingClicks;
+		if (remainingClicks >= 0) {
+			sendMessage("Superpairs remaining clicks: " + remainingClicks + ".");
+		}
+	}
+
+	private static void debugClaimDecision(String source, String title, int slot, ItemStack stack) {
+		if (!isDebugEnabled()) {
+			return;
+		}
+		String itemName = normalizedStackName(stack);
+		String itemPath = itemPath(stack);
+		String signature = source + "|" + title + "|" + slot + "|" + itemPath + "|" + itemName;
+		if (signature.equals(lastClaimDebugSignature)) {
+			return;
+		}
+		lastClaimDebugSignature = signature;
+		sendMessage("Claim " + source + " slot " + slot
+				+ " title=\"" + (title == null ? "" : title) + "\""
+				+ " item=\"" + itemName + "\""
+				+ " id=" + itemPath + ".");
+	}
+
+	private static void debugRewardClaim(String text) {
+		sendMessage(text);
+	}
+
+	private static void debugSlotClick(String source, Minecraft client, int slot) {
+		if (!isDebugEnabled()) {
+			return;
+		}
+		String title = currentTitle(client);
+		String signature = macroElapsedTicks + "|" + source + "|" + slot + "|" + title;
+		if (signature.equals(lastClickDebugSignature)) {
+			return;
+		}
+		lastClickDebugSignature = signature;
+		sendMessage("Click " + source + " slot " + slot + " in \"" + title + "\".");
+	}
+
 	private static void sendMessage(String text) {
-		if (!Boolean.TRUE.equals(UiDefinitions.ENCHANTING_MACRO_DEBUG.get())) {
+		if (!isDebugEnabled()) {
 			return;
 		}
 		FeatureChat.sendPrefixed(FEATURE_NAME, text);
+	}
+
+	private static boolean isDebugEnabled() {
+		return Boolean.TRUE.equals(UiDefinitions.ENCHANTING_MACRO_DEBUG.get());
 	}
 
 	private enum MacroStep {

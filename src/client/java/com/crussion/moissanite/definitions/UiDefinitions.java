@@ -5,6 +5,7 @@ import com.crussion.moissanite.features.cheats.AutoRend_Reworked;
 import com.crussion.moissanite.features.cheats.AutoExperimentMacro;
 import com.crussion.moissanite.features.cheats.KuudraPosTracker;
 import com.crussion.moissanite.features.kuudra.KuudraAutoOpenChest;
+import com.crussion.moissanite.features.kuudra.KuudraAutoPickupSupply;
 import com.crussion.moissanite.features.visual.RenderImageOnScreen;
 import com.crussion.moissanite.features.visual.storage.StorageOverlayFeature;
 import com.crussion.moissanite.update.ModUpdater;
@@ -31,6 +32,7 @@ public final class UiDefinitions {
 	public static final UiCategory GENERAL = UiCatalog.category("General");
 	public static final UiCategory DUNGEONS = UiCatalog.category("Dungeons");
 	public static final UiCategory KUUDRA = UiCatalog.category("Kuudra");
+	public static final UiCategory MINING = UiCatalog.category("Mining");
 	public static final UiCategory VISUAL = UiCatalog.category("Visual");
 	public static final UiCategory CHAT = UiCatalog.category("Chat");
 	public static final UiCategory MISC = UiCatalog.category("Misc");
@@ -49,6 +51,22 @@ public final class UiDefinitions {
 	// Visibilities
 	static {
 		ZOOM_KEYBIND.visibleWhen(ZOOM);
+	}
+
+	// Mining
+
+	// Sections
+	public static final UiSection MINING_STRUCTURE_SCANNER = MINING.section("Structure Scanner");
+
+	// Bindables
+	public static final UiSwitch STRUCTURE_SCANNER = MINING_STRUCTURE_SCANNER.toggle("Structure Scanner", false);
+	public static final UiSwitch STRUCTURE_SCANNER_DRAGON_LAIR = MINING_STRUCTURE_SCANNER.toggle("Dragon Lair", false);
+	public static final UiSwitch STRUCTURE_SCANNER_MINES_OF_DIVAN = MINING_STRUCTURE_SCANNER.toggle("Mines Of Divan", false);
+
+	// Visibilities
+	static {
+		STRUCTURE_SCANNER_DRAGON_LAIR.visibleWhen(STRUCTURE_SCANNER);
+		STRUCTURE_SCANNER_MINES_OF_DIVAN.visibleWhen(STRUCTURE_SCANNER);
 	}
 
 	// Dungeons
@@ -330,6 +348,7 @@ public final class UiDefinitions {
 
 	// Sections
 	public static final UiSection MISC_GENERAL = MISC.section("General");
+	public static final UiSection MISC_SKY_VISUALS = MISC.section("Sky Visuals");
 	public static final UiSection MISC_HAND_VISUALS = MISC.section("Animations");
 
 	// Bindables
@@ -340,6 +359,12 @@ public final class UiDefinitions {
 	public static final UiSwitch NO_SHIFT_ANIMATION = MISC_GENERAL.toggle("No Shift Animation", false);
 	public static final UiSwitch OLD_SHIFT = MISC_GENERAL.toggle("Old Shift", false);
 	public static final UiSwitch STAR_ITEMSTACK = MISC_GENERAL.toggle("Star Itemstack", true);
+
+	public static final UiSwitch CUSTOM_SKY_VISUALS = MISC_SKY_VISUALS.toggle("Custom Sky Visuals", false);
+	public static final UiSlider CUSTOM_SKY_TIME = MISC_SKY_VISUALS.slider("Sky Time", 0.0, 23999.0, 18000.0, 1.0);
+	public static final UiSlider CUSTOM_SKY_TIME_FLOW = MISC_SKY_VISUALS.slider("Sky Time Flow", 0.0, 20.0, 0.0, 0.1);
+	public static final UiDropdown CUSTOM_SKY_PHASE = MISC_SKY_VISUALS.dropdown("Sky Phase", "By Time");
+	public static final UiDropdown CUSTOM_SKY_WEATHER = MISC_SKY_VISUALS.dropdown("Sky Weather", "Vanilla");
 
 	public static final UiSlider HAND_VISUAL_X = MISC_HAND_VISUALS.slider("Hand X", -5.0, 5.0, 0.0, 0.01);
 	public static final UiSlider HAND_VISUAL_Y = MISC_HAND_VISUALS.slider("Hand Y", -5.0, 5.0, 0.0, 0.01);
@@ -354,7 +379,13 @@ public final class UiDefinitions {
 
 	// Visibilities
 	static {
+		CUSTOM_SKY_PHASE.setOptions(List.of("By Time", "Force Day", "Force Night"));
+		CUSTOM_SKY_WEATHER.setOptions(List.of("Vanilla", "Clear", "Rain", "Snow", "Thunder"));
 		CUSTOM_TITLE.visibleWhen(ENABLE_CUSTOM_TITLE);
+		CUSTOM_SKY_TIME.visibleWhen(CUSTOM_SKY_VISUALS);
+		CUSTOM_SKY_TIME_FLOW.visibleWhen(CUSTOM_SKY_VISUALS);
+		CUSTOM_SKY_PHASE.visibleWhen(CUSTOM_SKY_VISUALS);
+		CUSTOM_SKY_WEATHER.visibleWhen(CUSTOM_SKY_VISUALS);
 	}
 
 	// Cheats
@@ -405,13 +436,15 @@ public final class UiDefinitions {
 	public static final UiNumber AUTO_EXPERIMENTS_SUPERPAIRS_AFTER_PAIR_DELAY = CHEATS_AUTO_EXPERIMENTATION
 			.number("Auto Enchanting Superpairs After Pair Delay MS", 0, 10000, 3000);
 	public static final UiNumber AUTO_EXPERIMENTS_SUPERPAIRS_PAIR_CLAIMS = CHEATS_AUTO_EXPERIMENTATION
-			.number("Auto Enchanting Superpairs Pair Claims", 1, 20, 3);
+			.number("Auto Enchanting Superpairs Pair Claims", 1, 1, 1);
 	public static final UiButton AUTO_EXPERIMENTS_MACRO_START = CHEATS_AUTO_EXPERIMENTATION
-			.button("Auto Enchanting Start (BUGGED)", "Start", button -> AutoExperimentMacro.start());
+			.button("Auto Enchanting Start", "Start", button -> AutoExperimentMacro.start());
 	public static final UiButton AUTO_EXPERIMENTS_MACRO_STOP = CHEATS_AUTO_EXPERIMENTATION
 			.button("Auto Enchanting Stop", "Stop", button -> AutoExperimentMacro.stop());
 
 	public static final UiSwitch AUTO_DIRECTION = KUUDRA_CHEATS.toggle("Auto Direction", false);
+	public static final UiSlider AUTO_DIRECTION_ROTATION_MULTIPLIER = KUUDRA_CHEATS.slider(
+			"Auto Direction Rotation Multiplier", 0.1, 2.0, 0.5, 0.1);
 	public static final UiSwitch AUTO_DIRECTION_AUTO_HYPERION = KUUDRA_CHEATS.toggle("Auto Hyperion", false);
 	public static final UiSwitch AUTO_DIRECTION_AUTO_REAPER = KUUDRA_CHEATS.toggle("Auto Reaper", false);
 	public static final UiSwitch AUTO_SWAP_ARMOR_RAG = KUUDRA_CHEATS.toggle("Auto Swap Armor After Rag", false);
@@ -432,6 +465,18 @@ public final class UiDefinitions {
 	public static final UiSlider AUTO_PEARL_Y = KUUDRA_CHEATS.slider("Auto Pearl Y", -10000.0, 10000.0, 6.0, 1.0);
 	public static final UiButton AUTO_PEARL_MOVE = KUUDRA_CHEATS.button("Auto Pearl Move", "Move",
 			button -> AutoPearl.openMoveScreen());
+	// public static final UiSwitch AUTO_PICKUP_SUPPLY = KUUDRA_CHEATS.toggle("Auto Pickup Supply", false);
+	// public static final UiDropdown AUTO_PICKUP_SUPPLY_MODE = KUUDRA_CHEATS.dropdown("Auto Pickup Supply Mode", "Auto");
+	// public static final UiKeybind AUTO_PICKUP_SUPPLY_KEYBIND = KUUDRA_CHEATS.keybind("Manual Pickup Supply",
+	// 		InputConstants.UNKNOWN.getValue());
+	// public static final UiButton AUTO_PICKUP_SUPPLY_MANUAL = KUUDRA_CHEATS.button("Manual Pickup Supply Button", "Pickup",
+	// 		button -> KuudraAutoPickupSupply.requestManualPickup());
+	// public static final UiSwitch AUTO_PICKUP_SUPPLY_USE_DIRECTION = KUUDRA_CHEATS.toggle("Auto Pickup Supply Direction",
+	// 		true);
+	// public static final UiSlider AUTO_PICKUP_SUPPLY_DELAY = KUUDRA_CHEATS.slider("Auto Pickup Supply Delay MS", 0.0,
+	// 		2000.0, 0.0, 50.0);
+	// public static final UiSlider AUTO_PICKUP_SUPPLY_RANGE = KUUDRA_CHEATS.slider("Auto Pickup Supply Range", 1.0, 6.0,
+	// 		3.0, 0.1);
 	public static final UiSwitch AUTO_SHOP = KUUDRA_CHEATS.toggle("Auto Shop", false);
 	public static final UiSlider AUTO_SHOP_FIRST_CLICK_DELAY = KUUDRA_CHEATS.slider("Auto Shop First Click Delay", 1.0, 1500.0, 850.0, 1.0);
 	public static final UiSlider AUTO_SHOP_CLICK_DELAY = KUUDRA_CHEATS.slider("Auto Shop Click Delay", 1.0, 1000.0, 250.0, 1.0);
@@ -489,6 +534,7 @@ public final class UiDefinitions {
 		AUTO_EXPERIMENTS_SERUM_COUNT.visibleWhen(AUTO_EXPERIMENTS);
 		AUTO_EXPERIMENTS_GET_MAX_XP.visibleWhen(AUTO_EXPERIMENTS);
 		AUTO_EXPERIMENTS_MACRO_STOP.visibleWhen(AutoExperimentMacro::isRunning);
+		AUTO_DIRECTION_ROTATION_MULTIPLIER.visibleWhen(AUTO_DIRECTION);
 		AUTO_DIRECTION_AUTO_HYPERION.visibleWhen(AUTO_DIRECTION);
 		AUTO_DIRECTION_AUTO_REAPER.visibleWhen(AUTO_DIRECTION);
 		AUTO_REND_AUTO_BACK_PEARL.visibleWhen(AUTO_REND);
@@ -504,6 +550,16 @@ public final class UiDefinitions {
 		AUTO_PEARL_X.visibleWhen(() -> false);
 		AUTO_PEARL_Y.visibleWhen(() -> false);
 		AUTO_PEARL_MOVE.visibleWhen(AUTO_PEARL);
+		AUTO_PICKUP_SUPPLY_MODE.setOptions(List.of("Auto", "Manual"));
+		AUTO_PICKUP_SUPPLY_MODE.visibleWhen(AUTO_PICKUP_SUPPLY);
+		AUTO_PICKUP_SUPPLY_KEYBIND.visibleWhen(
+				() -> Boolean.TRUE.equals(AUTO_PICKUP_SUPPLY.get()) && isAutoPickupSupplyManualMode());
+		AUTO_PICKUP_SUPPLY_MANUAL.visibleWhen(
+				() -> Boolean.TRUE.equals(AUTO_PICKUP_SUPPLY.get()) && isAutoPickupSupplyManualMode());
+		AUTO_PICKUP_SUPPLY_USE_DIRECTION.visibleWhen(AUTO_PICKUP_SUPPLY);
+		AUTO_PICKUP_SUPPLY_DELAY.visibleWhen(
+				() -> Boolean.TRUE.equals(AUTO_PICKUP_SUPPLY.get()) && !isAutoPickupSupplyManualMode());
+		AUTO_PICKUP_SUPPLY_RANGE.visibleWhen(AUTO_PICKUP_SUPPLY);
 		AUTO_PEARL_REFILL_EVERY_TICKS.visibleWhen(AUTO_PEARL_REFILL);
 		AUTO_SHOP_FIRST_CLICK_DELAY.visibleWhen(AUTO_SHOP);
 		AUTO_SHOP_CLICK_DELAY.visibleWhen(AUTO_SHOP);
@@ -543,6 +599,7 @@ public final class UiDefinitions {
 			
 	public static final UiSwitch DEBUG = DEBUG_SECTION.toggle("Debug", false);
 	public static final UiSwitch AUTO_PEARL_DEBUG = DEBUG_SECTION.toggle("Auto Pearl", false);
+	public static final UiSwitch AUTO_PICKUP_SUPPLY_DEBUG = DEBUG_SECTION.toggle("Auto Pickup Supply", false);
 	public static final UiSwitch AUTO_REND_DEBUG = DEBUG_SECTION.toggle("Auto Rend", false);
 	public static final UiKeybind AUTO_REND_DEBUG_TRIGGER_KEYBIND = DEBUG_SECTION.keybind("Trigger Auto Rend",
 			InputConstants.UNKNOWN.getValue());
@@ -551,6 +608,7 @@ public final class UiDefinitions {
 	// Visibilities
 	static {
 		AUTO_PEARL_DEBUG.visibleWhen(DEBUG);
+		AUTO_PICKUP_SUPPLY_DEBUG.visibleWhen(DEBUG);
 		AUTO_REND_DEBUG.visibleWhen(DEBUG);
 		AUTO_REND_DEBUG_TRIGGER_KEYBIND.visibleWhen(
 				() -> Boolean.TRUE.equals(DEBUG.get()) && Boolean.TRUE.equals(AUTO_REND_DEBUG.get()));
@@ -605,6 +663,11 @@ public final class UiDefinitions {
 			return Boolean.TRUE.equals(SPOOFER_HIDE_MODS.get());
 		}
 		return true;
+	}
+
+	private static boolean isAutoPickupSupplyManualMode() {
+		String current = AUTO_PICKUP_SUPPLY_MODE.get();
+		return current != null && current.equalsIgnoreCase("Manual");
 	}
 
 	private UiDefinitions() {

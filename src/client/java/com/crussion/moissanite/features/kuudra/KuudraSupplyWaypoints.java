@@ -38,7 +38,10 @@ public final class KuudraSupplyWaypoints {
 	private static final String SUPPLY_RECEIVED_MARKER = "supplies received";
 	private static final String SUPPLY_PROGRESS_MARKER = "progress:";
 	private static final String SUPPLY_COMPLETE_MARKER = "complete";
+	private static final String SUPPLY_PICKUP_LABEL_MARKER = "click to pick up";
+	private static final String SUPPLY_PICKUP_TITLE_MARKER = "supplies";
 	private static final double SUPPLY_ZOMBIE_DISTANCE_SQ = 9.0D;
+	private static final double SUPPLY_PICKUP_LABEL_DISTANCE_SQ = 25.0D;
 	private static final int BEAM_HEIGHT = 150;
 	private static final float BOX_LINE_WIDTH = 2.5F;
 
@@ -147,42 +150,161 @@ public final class KuudraSupplyWaypoints {
 		CRATES.clear();
 		CRATE_HITBOXES.clear();
 
+		List<Vec3> crates = collectCratePositions(client);
 		List<AABB> zombieBoxes = new ArrayList<>();
 
 		for (Entity entity : client.level.entitiesForRendering()) {
-			if (entity instanceof Giant) {
-				if (entity.getY() >= 67.0D) {
-					continue;
-				}
-
-				double yawRad = Math.toRadians(entity.getYRot() + 130.0F);
-				double offsetX = 3.7D * Math.cos(yawRad);
-				double offsetZ = 3.7D * Math.sin(yawRad);
-				double x = entity.getX() + 0.5D + offsetX;
-				double z = entity.getZ() + 0.5D + offsetZ;
-				CRATES.add(new Vec3(x, 75.0D, z));
+			if (!isSupplyHitboxEntity(entity)) {
 				continue;
 			}
-
-			if (!(entity instanceof Zombie zombie) || !zombie.isInvisible()) {
-				continue;
-			}
-			double y = zombie.getY();
-			if (y < 72.0D || y > 78.0D) {
-				continue;
-			}
-
-			AABB box = zombie.getBoundingBox();
-			if (!isValidHitbox(box)) {
-				continue;
-			}
-			zombieBoxes.add(box);
+			zombieBoxes.add(entity.getBoundingBox());
 		}
 
-		for (Vec3 crate : CRATES) {
+		CRATES.addAll(crates);
+		for (Vec3 crate : crates) {
 			AABB merged = mergeNearbyHitboxes(crate, zombieBoxes);
 			CRATE_HITBOXES.add(merged != null ? merged : boxAround(crate, 1.0D));
 		}
+	}
+
+	public static SupplyPickupTarget findClosestPickupTarget(Minecraft client, double range) {
+		if (client == null || client.player == null || client.level == null) {
+			return null;
+		}
+		if (!Double.isFinite(range) || range <= 0.0D) {
+			return null;
+		}
+
+		List<Vec3> labels = collectPickupLabelPositions(client);
+		List<Vec3> crates = collectCratePositions(client);
+
+		Vec3 eyes = new Vec3(client.player.getX(), client.player.getEyeY(), client.player.getZ());
+		double maxDistanceSq = range * range;
+		SupplyPickupTarget bestLabeled = null;
+		SupplyPickupTarget bestCrate = null;
+		double bestLabeledMinY = Double.NEGATIVE_INFINITY;
+		double bestLabeledLabelDistanceSq = Double.MAX_VALUE;
+
+		for (Entity entity : client.level.entitiesForRendering()) {
+			if (!isSupplyHitboxEntity(entity)) {
+				continue;
+			}
+
+			AABB box = entity.getBoundingBox();
+			Vec3 boxCenter = boxCenter(box);
+			double distanceSq = distanceToBoxSqr(eyes, box);
+			if (distanceSq > maxDistanceSq) {
+				continue;
+			}
+
+			Vec3 label = nearestPickupLabel(boxCenter, labels);
+			double labelDistanceSq = label == null ? Double.MAX_VALUE : distanceSquared(boxCenter, label);
+			double minY = box.minY;
+			if (label != null
+					&& (bestLabeled == null
+							|| minY > bestLabeledMinY + 0.20D
+							|| (Math.abs(minY - bestLabeledMinY) <= 0.20D
+									&& labelDistanceSq < bestLabeledLabelDistanceSq)
+							|| (Math.abs(minY - bestLabeledMinY) <= 0.20D
+									&& Math.abs(labelDistanceSq - bestLabeledLabelDistanceSq) < 1.0E-6D
+									&& distanceSq < bestLabeled.distanceSq()))) {
+				bestLabeled = new SupplyPickupTarget(entity, label, distanceSq);
+				bestLabeledMinY = minY;
+				bestLabeledLabelDistanceSq = labelDistanceSq;
+				continue;
+			}
+
+			Vec3 crate = nearestCrate(boxCenter, crates);
+			if (crate != null && (bestCrate == null || distanceSq < bestCrate.distanceSq())) {
+				bestCrate = new SupplyPickupTarget(entity, crate, distanceSq);
+			}
+		}
+
+		return bestLabeled != null ? bestLabeled : bestCrate;
+	}
+
+	private static List<Vec3> collectPickupLabelPositions(Minecraft client) {
+		List<Vec3> labels = new ArrayList<>();
+		if (client == null || client.level == null) {
+			return labels;
+		}
+
+		for (Entity entity : client.level.entitiesForRendering()) {
+			if (!(entity instanceof ArmorStand armorStand) || !armorStand.isAlive()) {
+				continue;
+			}
+			String label = TextNormalizer.normalize(armorStand.getName().getString());
+			if (label.contains(SUPPLY_PICKUP_LABEL_MARKER) || label.equals(SUPPLY_PICKUP_TITLE_MARKER)) {
+				labels.add(entity.position());
+			}
+		}
+		return labels;
+	}
+
+	private static List<Vec3> collectCratePositions(Minecraft client) {
+		List<Vec3> crates = new ArrayList<>();
+		if (client == null || client.level == null) {
+			return crates;
+		}
+
+		for (Entity entity : client.level.entitiesForRendering()) {
+			if (!(entity instanceof Giant)) {
+				continue;
+			}
+			if (entity.getY() >= 67.0D) {
+				continue;
+			}
+
+			double yawRad = Math.toRadians(entity.getYRot() + 130.0F);
+			double offsetX = 3.7D * Math.cos(yawRad);
+			double offsetZ = 3.7D * Math.sin(yawRad);
+			double x = entity.getX() + 0.5D + offsetX;
+			double z = entity.getZ() + 0.5D + offsetZ;
+			crates.add(new Vec3(x, 75.0D, z));
+		}
+		return crates;
+	}
+
+	private static boolean isSupplyHitboxEntity(Entity entity) {
+		if (!(entity instanceof Zombie zombie) || !zombie.isInvisible()) {
+			return false;
+		}
+		double y = zombie.getY();
+		return y >= 72.0D && y <= 78.0D && isValidHitbox(zombie.getBoundingBox());
+	}
+
+	private static Vec3 nearestCrate(Vec3 position, List<Vec3> crates) {
+		if (position == null || crates == null || crates.isEmpty()) {
+			return null;
+		}
+
+		Vec3 best = null;
+		double bestDistanceSq = SUPPLY_ZOMBIE_DISTANCE_SQ;
+		for (Vec3 crate : crates) {
+			double distanceSq = distanceSquared(position, crate);
+			if (distanceSq <= bestDistanceSq) {
+				bestDistanceSq = distanceSq;
+				best = crate;
+			}
+		}
+		return best;
+	}
+
+	private static Vec3 nearestPickupLabel(Vec3 position, List<Vec3> labels) {
+		if (position == null || labels == null || labels.isEmpty()) {
+			return null;
+		}
+
+		Vec3 best = null;
+		double bestDistanceSq = SUPPLY_PICKUP_LABEL_DISTANCE_SQ;
+		for (Vec3 label : labels) {
+			double distanceSq = distanceSquared(position, label);
+			if (distanceSq <= bestDistanceSq) {
+				bestDistanceSq = distanceSq;
+				best = label;
+			}
+		}
+		return best;
 	}
 
 	private static void updateSupplyStates(Minecraft client) {
@@ -323,6 +445,34 @@ public final class KuudraSupplyWaypoints {
 				&& Double.isFinite(box.maxZ);
 	}
 
+	private static Vec3 boxCenter(AABB box) {
+		return new Vec3(
+				(box.minX + box.maxX) * 0.5D,
+				(box.minY + box.maxY) * 0.5D,
+				(box.minZ + box.maxZ) * 0.5D);
+	}
+
+	private static double distanceToBoxSqr(Vec3 point, AABB box) {
+		double closestX = clamp(point.x, box.minX, box.maxX);
+		double closestY = clamp(point.y, box.minY, box.maxY);
+		double closestZ = clamp(point.z, box.minZ, box.maxZ);
+		double dx = point.x - closestX;
+		double dy = point.y - closestY;
+		double dz = point.z - closestZ;
+		return (dx * dx) + (dy * dy) + (dz * dz);
+	}
+
+	private static double distanceSquared(Vec3 from, Vec3 to) {
+		double dx = to.x - from.x;
+		double dy = to.y - from.y;
+		double dz = to.z - from.z;
+		return (dx * dx) + (dy * dy) + (dz * dz);
+	}
+
+	private static double clamp(double value, double min, double max) {
+		return Math.max(min, Math.min(max, value));
+	}
+
 	private static AABB boxAround(Vec3 center, double size) {
 		double half = size * 0.5D;
 		return new AABB(
@@ -349,6 +499,9 @@ public final class KuudraSupplyWaypoints {
 	private static boolean isAnyToggleEnabled() {
 		return Boolean.TRUE.equals(UiDefinitions.KUUDRA_CRATE_WAYPOINTS.get())
 				|| Boolean.TRUE.equals(UiDefinitions.KUUDRA_BALLISTA_BUILD_WAYPOINTS.get());
+	}
+
+	public record SupplyPickupTarget(Entity entity, Vec3 cratePosition, double distanceSq) {
 	}
 
 	private static RenderType getWaypointBoxRenderType() {
