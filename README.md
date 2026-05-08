@@ -3,6 +3,7 @@
 # Moissanite
 
 Hypixel Skyblock QOL (UAYOR)
+
 Currently everything is WD, SPEC safe
 
 [![Minecraft](https://img.shields.io/badge/Minecraft-1.21.11-2ea043?style=for-the-badge)]()
