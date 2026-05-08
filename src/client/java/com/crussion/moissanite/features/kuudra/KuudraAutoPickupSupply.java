@@ -1,5 +1,9 @@
 package com.crussion.moissanite.features.kuudra;
 
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.Packet;
+
+/*
 import com.crussion.moissanite.definitions.UiDefinitions;
 import com.crussion.moissanite.features.cheats.AutoPearl;
 import com.crussion.moissanite.input.FakeKeybinds;
@@ -697,5 +701,26 @@ public final class KuudraAutoPickupSupply {
 		WAITING_CONFIRM,
 		CONFIRMED_PICKUP,
 		COOLDOWN
+	}
+}
+*/
+
+public final class KuudraAutoPickupSupply {
+	private KuudraAutoPickupSupply() {
+	}
+
+	public static void init() {
+	}
+
+	public static void requestManualPickup() {
+	}
+
+	public static void onPacketSent(Packet<?> packet) {
+	}
+
+	public static void onSystemChat(Component message) {
+	}
+
+	public static void onTitleText(Component message) {
 	}
 }

@@ -74,9 +74,9 @@ public class ClientPacketListenerMixin {
 		if (Boolean.TRUE.equals(UiDefinitions.AUTO_SHOP.get())) {
 			com.crussion.moissanite.features.kuudra.KuudraAutoShop.onSystemChat(packet.content());
 		}
-		if (Boolean.TRUE.equals(UiDefinitions.AUTO_PICKUP_SUPPLY.get())) {
-			KuudraAutoPickupSupply.onSystemChat(packet.content());
-		}
+		// if (Boolean.TRUE.equals(UiDefinitions.AUTO_PICKUP_SUPPLY.get())) {
+		// 	KuudraAutoPickupSupply.onSystemChat(packet.content());
+		// }
 		DungeonsTerminals.onSystemChat(packet.content());
 	}
 
@@ -97,9 +97,9 @@ public class ClientPacketListenerMixin {
 		if (Boolean.TRUE.equals(UiDefinitions.AUTO_PEARL.get())) {
 			AutoPearl.onTitleText(packet.text());
 		}
-		if (Boolean.TRUE.equals(UiDefinitions.AUTO_PICKUP_SUPPLY.get())) {
-			KuudraAutoPickupSupply.onTitleText(packet.text());
-		}
+		// if (Boolean.TRUE.equals(UiDefinitions.AUTO_PICKUP_SUPPLY.get())) {
+		// 	KuudraAutoPickupSupply.onTitleText(packet.text());
+		// }
 	}
 
 	@Inject(method = "setSubtitleText", at = @At("TAIL"))
@@ -107,9 +107,9 @@ public class ClientPacketListenerMixin {
 		if (Boolean.TRUE.equals(UiDefinitions.AUTO_PEARL.get())) {
 			AutoPearl.onTitleText(packet.text());
 		}
-		if (Boolean.TRUE.equals(UiDefinitions.AUTO_PICKUP_SUPPLY.get())) {
-			KuudraAutoPickupSupply.onTitleText(packet.text());
-		}
+		// if (Boolean.TRUE.equals(UiDefinitions.AUTO_PICKUP_SUPPLY.get())) {
+		// 	KuudraAutoPickupSupply.onTitleText(packet.text());
+		// }
 	}
 
 	@Inject(method = "setActionBarText", at = @At("TAIL"))
@@ -117,9 +117,9 @@ public class ClientPacketListenerMixin {
 		if (Boolean.TRUE.equals(UiDefinitions.AUTO_PEARL.get())) {
 			AutoPearl.onTitleText(packet.text());
 		}
-		if (Boolean.TRUE.equals(UiDefinitions.AUTO_PICKUP_SUPPLY.get())) {
-			KuudraAutoPickupSupply.onTitleText(packet.text());
-		}
+		// if (Boolean.TRUE.equals(UiDefinitions.AUTO_PICKUP_SUPPLY.get())) {
+		// 	KuudraAutoPickupSupply.onTitleText(packet.text());
+		// }
 	}
 
 	private static boolean moissanite$shouldTrackKuudraPhase() {
@@ -132,7 +132,7 @@ public class ClientPacketListenerMixin {
 				|| Boolean.TRUE.equals(UiDefinitions.REND_DAMAGE.get())
 				|| Boolean.TRUE.equals(UiDefinitions.AUTO_REND.get())
 				|| Boolean.TRUE.equals(UiDefinitions.AUTO_PEARL.get())
-				|| Boolean.TRUE.equals(UiDefinitions.AUTO_PICKUP_SUPPLY.get())
+				// || Boolean.TRUE.equals(UiDefinitions.AUTO_PICKUP_SUPPLY.get())
 				|| Boolean.TRUE.equals(UiDefinitions.AUTO_DIRECTION.get())
 				|| Boolean.TRUE.equals(UiDefinitions.AUTO_SHOP.get())
 				|| Boolean.TRUE.equals(UiDefinitions.AUTO_TAP.get())

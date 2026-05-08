@@ -550,16 +550,16 @@ public final class UiDefinitions {
 		AUTO_PEARL_X.visibleWhen(() -> false);
 		AUTO_PEARL_Y.visibleWhen(() -> false);
 		AUTO_PEARL_MOVE.visibleWhen(AUTO_PEARL);
-		AUTO_PICKUP_SUPPLY_MODE.setOptions(List.of("Auto", "Manual"));
-		AUTO_PICKUP_SUPPLY_MODE.visibleWhen(AUTO_PICKUP_SUPPLY);
-		AUTO_PICKUP_SUPPLY_KEYBIND.visibleWhen(
-				() -> Boolean.TRUE.equals(AUTO_PICKUP_SUPPLY.get()) && isAutoPickupSupplyManualMode());
-		AUTO_PICKUP_SUPPLY_MANUAL.visibleWhen(
-				() -> Boolean.TRUE.equals(AUTO_PICKUP_SUPPLY.get()) && isAutoPickupSupplyManualMode());
-		AUTO_PICKUP_SUPPLY_USE_DIRECTION.visibleWhen(AUTO_PICKUP_SUPPLY);
-		AUTO_PICKUP_SUPPLY_DELAY.visibleWhen(
-				() -> Boolean.TRUE.equals(AUTO_PICKUP_SUPPLY.get()) && !isAutoPickupSupplyManualMode());
-		AUTO_PICKUP_SUPPLY_RANGE.visibleWhen(AUTO_PICKUP_SUPPLY);
+		// AUTO_PICKUP_SUPPLY_MODE.setOptions(List.of("Auto", "Manual"));
+		// AUTO_PICKUP_SUPPLY_MODE.visibleWhen(AUTO_PICKUP_SUPPLY);
+		// AUTO_PICKUP_SUPPLY_KEYBIND.visibleWhen(
+		// 		() -> Boolean.TRUE.equals(AUTO_PICKUP_SUPPLY.get()) && isAutoPickupSupplyManualMode());
+		// AUTO_PICKUP_SUPPLY_MANUAL.visibleWhen(
+		// 		() -> Boolean.TRUE.equals(AUTO_PICKUP_SUPPLY.get()) && isAutoPickupSupplyManualMode());
+		// AUTO_PICKUP_SUPPLY_USE_DIRECTION.visibleWhen(AUTO_PICKUP_SUPPLY);
+		// AUTO_PICKUP_SUPPLY_DELAY.visibleWhen(
+		// 		() -> Boolean.TRUE.equals(AUTO_PICKUP_SUPPLY.get()) && !isAutoPickupSupplyManualMode());
+		// AUTO_PICKUP_SUPPLY_RANGE.visibleWhen(AUTO_PICKUP_SUPPLY);
 		AUTO_PEARL_REFILL_EVERY_TICKS.visibleWhen(AUTO_PEARL_REFILL);
 		AUTO_SHOP_FIRST_CLICK_DELAY.visibleWhen(AUTO_SHOP);
 		AUTO_SHOP_CLICK_DELAY.visibleWhen(AUTO_SHOP);
@@ -608,7 +608,7 @@ public final class UiDefinitions {
 	// Visibilities
 	static {
 		AUTO_PEARL_DEBUG.visibleWhen(DEBUG);
-		AUTO_PICKUP_SUPPLY_DEBUG.visibleWhen(DEBUG);
+		// AUTO_PICKUP_SUPPLY_DEBUG.visibleWhen(DEBUG);
 		AUTO_REND_DEBUG.visibleWhen(DEBUG);
 		AUTO_REND_DEBUG_TRIGGER_KEYBIND.visibleWhen(
 				() -> Boolean.TRUE.equals(DEBUG.get()) && Boolean.TRUE.equals(AUTO_REND_DEBUG.get()));
@@ -665,10 +665,10 @@ public final class UiDefinitions {
 		return true;
 	}
 
-	private static boolean isAutoPickupSupplyManualMode() {
-		String current = AUTO_PICKUP_SUPPLY_MODE.get();
-		return current != null && current.equalsIgnoreCase("Manual");
-	}
+	// private static boolean isAutoPickupSupplyManualMode() {
+		// String current = AUTO_PICKUP_SUPPLY_MODE.get();
+		// return current != null && current.equalsIgnoreCase("Manual");
+	// }
 
 	private UiDefinitions() {
 	}
