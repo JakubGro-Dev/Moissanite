@@ -20,6 +20,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.chunk.EmptyLevelChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.phys.Vec3;
 
@@ -246,7 +247,7 @@ public final class StructureScanner {
 
 	private static void scanAvailableChunks(Minecraft client) {
 		if (!hasPendingScanWork()) {
-			reportMissingStructures();
+			reportMissingStructures(client);
 			return;
 		}
 
@@ -264,8 +265,10 @@ public final class StructureScanner {
 
 			int chunkX = ChunkPos.getX(scanChunk.chunkKey());
 			int chunkZ = ChunkPos.getZ(scanChunk.chunkKey());
-			LevelChunk chunk = client.level.getChunkSource().getChunk(chunkX, chunkZ, ChunkStatus.FULL, false);
+			LevelChunk chunk = loadedChunkOrNull(client, chunkX, chunkZ);
 			if (chunk == null) {
+				// The server has not (yet) sent this chunk to us. We must NOT mark
+				// it as scanned, otherwise we'd later falsely report "not found".
 				continue;
 			}
 
@@ -281,7 +284,7 @@ public final class StructureScanner {
 			}
 		}
 
-		reportMissingStructures();
+		reportMissingStructures(client);
 	}
 
 	private static boolean hasPendingScanWork() {
@@ -394,20 +397,32 @@ public final class StructureScanner {
 		}
 	}
 
-	private static void reportMissingStructures() {
+	private static void reportMissingStructures(Minecraft client) {
 		for (StructureScan structure : STRUCTURES) {
-			if (structure.isEnabled()
-					&& structure.foundWaypoint == null
-					&& !structure.notFoundReported
-					&& structure.allChunksScanned(SCANNED_CHUNKS)) {
-				structure.notFoundReported = true;
-				FeatureChat.send(structure.notFoundText);
+			if (!structure.isEnabled()
+					|| structure.foundWaypoint != null
+					|| structure.notFoundReported) {
+				continue;
 			}
+			// A "not found" claim is only safe if every chunk that this structure
+			// could occupy is currently loaded (server has actually delivered it
+			// to us under its render-distance) AND we have already scanned it.
+			// If even one is still out of view distance we keep waiting silently.
+			if (!structure.allChunksScanned(structure.scannedChunks)) {
+				continue;
+			}
+			if (!allStructureChunksLoaded(client, structure.scanChunks)) {
+				continue;
+			}
+
+			structure.notFoundReported = true;
+			FeatureChat.send(structure.notFoundText);
 		}
 		if (isCorleoneScannerEnabled()
 				&& CORLEONE_MARKERS.isEmpty()
 				&& !corleoneNotFoundReported
-				&& allChunksScanned(CORLEONE_SCAN_CHUNKS)) {
+				&& allChunksScanned(CORLEONE_SCAN_CHUNKS)
+				&& allStructureChunksLoaded(client, CORLEONE_SCAN_CHUNKS)) {
 			corleoneNotFoundReported = true;
 			FeatureChat.send("No Corleone was found.");
 		}
@@ -762,6 +777,40 @@ public final class StructureScanner {
 		return true;
 	}
 
+	/**
+	 * Returns the chunk only if the server has actually delivered it to the
+	 * client. {@code getChunk(x, z, FULL, false)} can occasionally return a
+	 * placeholder/empty chunk; we explicitly reject those so chunks beyond the
+	 * server's view distance are treated as "not yet scannable", not "scanned".
+	 */
+	private static LevelChunk loadedChunkOrNull(Minecraft client, int chunkX, int chunkZ) {
+		if (client == null || client.level == null) {
+			return null;
+		}
+		if (!client.level.getChunkSource().hasChunk(chunkX, chunkZ)) {
+			return null;
+		}
+		LevelChunk chunk = client.level.getChunkSource().getChunk(chunkX, chunkZ, ChunkStatus.FULL, false);
+		if (chunk == null || chunk instanceof EmptyLevelChunk) {
+			return null;
+		}
+		return chunk;
+	}
+
+	private static boolean allStructureChunksLoaded(Minecraft client, List<ScanChunk> chunks) {
+		if (client == null || client.level == null) {
+			return false;
+		}
+		for (ScanChunk c : chunks) {
+			int cx = ChunkPos.getX(c.chunkKey());
+			int cz = ChunkPos.getZ(c.chunkKey());
+			if (loadedChunkOrNull(client, cx, cz) == null) {
+				return false;
+			}
+		}
+		return true;
+	}
+
 	private static void renderWaypoints(WorldRenderContext context, Minecraft client) {
 		for (StructureScan structure : STRUCTURES) {
 			if (!structure.isEnabled() || structure.foundWaypoint == null) {
@@ -810,7 +859,6 @@ public final class StructureScanner {
 	private static Vec3 corleoneWaypoint(BlockPos marker) {
 		return new Vec3(marker.getX() + 0.5D, marker.getY() + 0.5D, marker.getZ() + 0.5D);
 	}
-
 
 	private static void renderWaypoint(WorldRenderContext context, Minecraft client, StructureScan structure) {
 		WorldTextRenderer.drawText(

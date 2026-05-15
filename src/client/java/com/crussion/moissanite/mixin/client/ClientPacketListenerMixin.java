@@ -116,6 +116,7 @@ public class ClientPacketListenerMixin {
 
 	@Inject(method = "setActionBarText", at = @At("TAIL"))
 	private void moissanite$handleSetActionBarText(ClientboundSetActionBarTextPacket packet, CallbackInfo ci) {
+		UniqueServerHopper.onSystemChat(packet.text());
 		if (Boolean.TRUE.equals(UiDefinitions.AUTO_PEARL.get())) {
 			AutoPearl.onTitleText(packet.text());
 		}

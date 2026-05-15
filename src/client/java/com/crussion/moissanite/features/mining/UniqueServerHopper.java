@@ -26,18 +26,17 @@ public final class UniqueServerHopper {
 	private static final Set<String> SEEN_SERVERS = new HashSet<>();
 
 	private static boolean initialized;
+	private static boolean startedByUser;
 	private static State state = State.STOPPED;
-	private static CommandKind lastCommand = CommandKind.NONE;
+	private static CommandKind pendingCommand = CommandKind.NONE;
 	private static long actionAtMs;
 	private static long commandSentAtMs;
 	private static long locrawRequestedAtMs;
-	private static long nextWorldCheckLocrawAtMs;
-	private static long worldCheckLocrawRequestedAtMs;
-	private static boolean worldCheckLocrawPending;
 	private static String lastKnownServer = "";
 	private static String commandStartServer = "";
 	private static String uniqueWaitServer = "";
 	private static int uniqueSoundToken;
+	private static Object observedLevel;
 
 	private UniqueServerHopper() {
 	}
@@ -49,48 +48,45 @@ public final class UniqueServerHopper {
 		initialized = true;
 
 		ClientTickEvents.END_CLIENT_TICK.register(UniqueServerHopper::onClientTick);
-		ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register((client, world) -> onWorldChange());
+		ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register((client, world) ->
+				onWorldChangeDetected(client != null && client.level != null ? client.level : world, true));
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> stopRuntime());
 	}
 
 	public static void start() {
+		stopRuntime();
+
 		if (!Boolean.TRUE.equals(UiDefinitions.UNIQUE_SERVER_HOPPER.get())) {
-			FeatureChat.sendPrefixed("Unique Server Hopper", "Enable the feature first.");
 			return;
 		}
 		if (command1().isBlank() || command2().isBlank()) {
-			FeatureChat.sendPrefixed("Unique Server Hopper", "Command 1 and Command 2 cannot be empty.");
 			return;
 		}
 
 		SkyBlockLocationTracker.Location location = SkyBlockLocationTracker.currentLocation();
 		lastKnownServer = location == null ? "" : safeServer(location.server());
 
+		startedByUser = true;
 		state = State.WAITING_INITIAL_LOCRAW_READY;
-		lastCommand = CommandKind.NONE;
+		pendingCommand = CommandKind.NONE;
 		actionAtMs = 0L;
 		commandSentAtMs = 0L;
 		locrawRequestedAtMs = 0L;
-		nextWorldCheckLocrawAtMs = 0L;
-		worldCheckLocrawRequestedAtMs = 0L;
-		worldCheckLocrawPending = false;
 		commandStartServer = "";
 		uniqueWaitServer = "";
-		FeatureChat.sendPrefixed("Unique Server Hopper", "Started. Cached servers: " + SEEN_SERVERS.size());
+		observedLevel = currentClientLevel();
 	}
 
 	public static void stop() {
 		stopRuntime();
-		FeatureChat.sendPrefixed("Unique Server Hopper", "Stopped. Cache was not cleared.");
 	}
 
 	public static void cleanCache() {
 		SEEN_SERVERS.clear();
-		FeatureChat.sendPrefixed("Unique Server Hopper", "Cache cleared.");
 	}
 
 	public static boolean isRunning() {
-		return state != State.STOPPED;
+		return startedByUser && state != State.STOPPED;
 	}
 
 	public static void onToggleChanged(Boolean enabled) {
@@ -104,6 +100,9 @@ public final class UniqueServerHopper {
 		if (text.isBlank()) {
 			return;
 		}
+		if (!isRunning()) {
+			return;
+		}
 
 		Locraw locraw = parseLocraw(message);
 		if (locraw != null) {
@@ -114,7 +113,6 @@ public final class UniqueServerHopper {
 		if (isKickMessage(text)) {
 			if (isRunning()) {
 				stopRuntime();
-				FeatureChat.sendPrefixed("Unique Server Hopper", "Stopped because a kick occurred. Cache was not cleared.");
 			}
 			return;
 		}
@@ -130,11 +128,16 @@ public final class UniqueServerHopper {
 			return;
 		}
 		if (!isRunning()) {
+			if (state != State.STOPPED) {
+				stopRuntime();
+			}
 			return;
 		}
 		if (client == null || client.player == null || client.level == null || client.player.connection == null) {
 			return;
 		}
+
+		detectMissedWorldChange(client);
 
 		long now = System.currentTimeMillis();
 
@@ -154,7 +157,6 @@ public final class UniqueServerHopper {
 					state = State.WAITING_INITIAL_LOCRAW_READY;
 					actionAtMs = now;
 					locrawRequestedAtMs = 0L;
-					FeatureChat.sendPrefixed("Unique Server Hopper", "Initial locraw timed out. Retrying locraw.");
 				}
 			}
 			case WAITING_COMMAND_1_READY -> {
@@ -177,7 +179,6 @@ public final class UniqueServerHopper {
 					state = State.WAITING_LOCRAW_READY;
 					actionAtMs = now;
 					locrawRequestedAtMs = 0L;
-					FeatureChat.sendPrefixed("Unique Server Hopper", "Locraw timed out. Retrying locraw.");
 				}
 			}
 			case WAITING_UNIQUE_LEAVE_LOCRAW_READY -> {
@@ -192,45 +193,48 @@ public final class UniqueServerHopper {
 					locrawRequestedAtMs = 0L;
 				}
 			}
-			case WAITING_RETRY -> {
-				if (now >= actionAtMs) {
-					retryLastCommand(client);
-				}
-			}
 			default -> {
 			}
 		}
 	}
 
 	private static void handleWorldChangeWaitTick(long now) {
-		if (commandSentAtMs > 0L && now - commandSentAtMs >= retryDelayMs()) {
-			state = State.WAITING_RETRY;
-			actionAtMs = now;
-			clearWorldCheckLocraw();
-			FeatureChat.sendPrefixed("Unique Server Hopper", "World did not change. Retrying " + lastCommandName() + ".");
+		if (commandSentAtMs <= 0L || now - commandSentAtMs < retryDelayMs()) {
 			return;
 		}
 
-		if (worldCheckLocrawPending) {
-			if (worldCheckLocrawRequestedAtMs > 0L && now - worldCheckLocrawRequestedAtMs >= retryDelayMs()) {
-				worldCheckLocrawPending = false;
-				worldCheckLocrawRequestedAtMs = 0L;
-				nextWorldCheckLocrawAtMs = now;
-				FeatureChat.sendPrefixed("Unique Server Hopper", "World check locraw timed out.");
-			}
+		CommandKind command = pendingCommand != CommandKind.NONE ? pendingCommand : waitingWorldChangeCommand();
+		if (command == CommandKind.NONE) {
+			stopRuntime();
 			return;
 		}
 
-		if (now >= nextWorldCheckLocrawAtMs) {
-			requestWorldCheckLocraw();
+		scheduleCommandRetry(now, 0L, command);
+	}
+
+	private static void detectMissedWorldChange(Minecraft client) {
+		Object level = client.level;
+		if (observedLevel == null) {
+			observedLevel = level;
+			return;
+		}
+
+		if (observedLevel != level) {
+			onWorldChangeDetected(level, false);
 		}
 	}
 
-	private static void onWorldChange() {
+	private static void onWorldChangeDetected(Object level, boolean force) {
 		if (!isRunning()) {
+			observedLevel = level;
 			return;
 		}
 
+		if (!force && level != null && observedLevel == level) {
+			return;
+		}
+
+		observedLevel = level;
 		long now = System.currentTimeMillis();
 
 		if (state == State.UNIQUE_WAITING_USER_LEAVE) {
@@ -248,32 +252,24 @@ public final class UniqueServerHopper {
 			return;
 		}
 
-		if (state == State.WAITING_RETRY && lastCommand == CommandKind.COMMAND_1) {
-			completeCommand1WorldChange(now);
-			return;
-		}
-
-		if (state == State.WAITING_RETRY && lastCommand == CommandKind.COMMAND_2) {
-			completeCommand2WorldChange(now, "");
-		}
 	}
 
 	private static void sendCommand(Minecraft client, CommandKind kind) {
-		long now = System.currentTimeMillis();
+		if (!canRunAutomation()) {
+			stopRuntime();
+			return;
+		}
+
 		String command = kind == CommandKind.COMMAND_1 ? command1() : command2();
 		if (command.isBlank()) {
 			stopRuntime();
-			FeatureChat.sendPrefixed("Unique Server Hopper", "Stopped because a command is empty.");
 			return;
 		}
 
 		client.player.connection.sendCommand(command);
-		lastCommand = kind;
-		commandSentAtMs = now;
+		pendingCommand = kind;
+		commandSentAtMs = System.currentTimeMillis();
 		commandStartServer = lastKnownServer;
-		worldCheckLocrawPending = false;
-		worldCheckLocrawRequestedAtMs = 0L;
-		nextWorldCheckLocrawAtMs = now + locrawDelayMs();
 
 		if (kind == CommandKind.COMMAND_1) {
 			state = State.WAITING_COMMAND_1_WORLD_CHANGE;
@@ -282,15 +278,12 @@ public final class UniqueServerHopper {
 		}
 	}
 
-	private static void retryLastCommand(Minecraft client) {
-		if (lastCommand == CommandKind.NONE) {
+	private static void requestInitialLocraw() {
+		if (!canRunAutomation()) {
 			stopRuntime();
 			return;
 		}
-		sendCommand(client, lastCommand);
-	}
 
-	private static void requestInitialLocraw() {
 		long now = System.currentTimeMillis();
 		state = State.WAITING_INITIAL_LOCRAW_RESPONSE;
 		locrawRequestedAtMs = now;
@@ -298,6 +291,11 @@ public final class UniqueServerHopper {
 	}
 
 	private static void requestTrackedLocraw() {
+		if (!canRunAutomation()) {
+			stopRuntime();
+			return;
+		}
+
 		long now = System.currentTimeMillis();
 		state = State.WAITING_LOCRAW_RESPONSE;
 		locrawRequestedAtMs = now;
@@ -305,17 +303,14 @@ public final class UniqueServerHopper {
 	}
 
 	private static void requestUniqueLeaveLocraw() {
+		if (!canRunAutomation()) {
+			stopRuntime();
+			return;
+		}
+
 		long now = System.currentTimeMillis();
 		state = State.WAITING_UNIQUE_LEAVE_LOCRAW_RESPONSE;
 		locrawRequestedAtMs = now;
-		SkyBlockLocationTracker.requestRefreshNow(true);
-	}
-
-	private static void requestWorldCheckLocraw() {
-		long now = System.currentTimeMillis();
-		worldCheckLocrawPending = true;
-		worldCheckLocrawRequestedAtMs = now;
-		nextWorldCheckLocrawAtMs = now + retryDelayMs();
 		SkyBlockLocationTracker.requestRefreshNow(true);
 	}
 
@@ -352,58 +347,43 @@ public final class UniqueServerHopper {
 		}
 
 		if (state == State.WAITING_COMMAND_1_WORLD_CHANGE) {
-			worldCheckLocrawPending = false;
-			worldCheckLocrawRequestedAtMs = 0L;
-
 			if (hasServerChanged(normalizedServer)) {
 				completeCommand1WorldChange(now);
-			} else {
-				nextWorldCheckLocrawAtMs = now + retryDelayMs();
 			}
 			return;
 		}
 
 		if (state == State.WAITING_COMMAND_2_WORLD_CHANGE) {
-			worldCheckLocrawPending = false;
-			worldCheckLocrawRequestedAtMs = 0L;
-
 			if (hasServerChanged(normalizedServer)) {
 				completeCommand2WorldChange(now, normalizedServer);
-			} else {
-				nextWorldCheckLocrawAtMs = now + retryDelayMs();
 			}
 		}
 	}
 
 	private static void completeUniqueLeave(long now) {
 		state = State.WAITING_COMMAND_2_AFTER_UNIQUE_LEAVE;
+		pendingCommand = CommandKind.NONE;
 		actionAtMs = now + worldEnterDelayMs();
 		commandSentAtMs = 0L;
 		locrawRequestedAtMs = 0L;
-		lastCommand = CommandKind.NONE;
 		commandStartServer = "";
 		uniqueWaitServer = "";
-		clearWorldCheckLocraw();
-		FeatureChat.sendPrefixed("Unique Server Hopper", "Left unique world. Command 2 in " + configuredWorldEnterDelayText() + "s.");
 	}
 
 	private static void completeCommand1WorldChange(long now) {
 		state = State.WAITING_COMMAND_2_READY;
+		pendingCommand = CommandKind.NONE;
 		actionAtMs = now + worldEnterDelayMs();
-		lastCommand = CommandKind.NONE;
 		commandSentAtMs = 0L;
 		commandStartServer = "";
 		uniqueWaitServer = "";
-		clearWorldCheckLocraw();
-		FeatureChat.sendPrefixed("Unique Server Hopper", "Command 1 changed world. Command 2 in " + configuredWorldEnterDelayText() + "s.");
 	}
 
 	private static void completeCommand2WorldChange(long now, String serverFromLocraw) {
-		lastCommand = CommandKind.NONE;
+		pendingCommand = CommandKind.NONE;
 		commandSentAtMs = 0L;
 		commandStartServer = "";
 		uniqueWaitServer = "";
-		clearWorldCheckLocraw();
 
 		if (serverFromLocraw != null && !serverFromLocraw.isBlank()) {
 			handleTrackedServer(serverFromLocraw);
@@ -420,14 +400,12 @@ public final class UniqueServerHopper {
 		}
 
 		long now = System.currentTimeMillis();
-		boolean commandThrottle = isCommandThrottleMessage(text);
 		long delayMs = retryDelayMs();
 
 		if (state == State.WAITING_INITIAL_LOCRAW_READY || state == State.WAITING_INITIAL_LOCRAW_RESPONSE) {
 			state = State.WAITING_INITIAL_LOCRAW_READY;
 			actionAtMs = now + delayMs;
 			locrawRequestedAtMs = 0L;
-			FeatureChat.sendPrefixed("Unique Server Hopper", "Initial locraw was throttled. Retrying locraw.");
 			return;
 		}
 
@@ -435,38 +413,21 @@ public final class UniqueServerHopper {
 			state = State.WAITING_LOCRAW_READY;
 			actionAtMs = now + delayMs;
 			locrawRequestedAtMs = 0L;
-			FeatureChat.sendPrefixed("Unique Server Hopper", "Locraw was throttled. Retrying locraw.");
 			return;
 		}
 
 		CommandKind failedCommand = waitingWorldChangeCommand();
-		if (commandThrottle && failedCommand != CommandKind.NONE && worldCheckLocrawPending && !isWarpFailureMessage(text)) {
-			worldCheckLocrawPending = false;
-			worldCheckLocrawRequestedAtMs = 0L;
-			nextWorldCheckLocrawAtMs = now + delayMs;
-			FeatureChat.sendPrefixed("Unique Server Hopper", "World check locraw was throttled. Retrying world check.");
-			return;
-		}
-
 		if (failedCommand == CommandKind.NONE) {
 			delayCurrentReadyState(now, delayMs);
 			return;
 		}
 
 		scheduleCommandRetry(now, delayMs, failedCommand);
-
-		if (failedCommand == CommandKind.COMMAND_1) {
-			FeatureChat.sendPrefixed("Unique Server Hopper", "Warp failed. Retrying Command 1.");
-			return;
-		}
-
-		FeatureChat.sendPrefixed("Unique Server Hopper", "Warp failed. Retrying Command 2.");
 	}
 
 	private static void scheduleCommandRetry(long now, long delayMs, CommandKind command) {
-		clearWorldCheckLocraw();
+		pendingCommand = CommandKind.NONE;
 		commandSentAtMs = 0L;
-		lastCommand = command;
 		uniqueWaitServer = "";
 		actionAtMs = now + delayMs;
 
@@ -492,25 +453,23 @@ public final class UniqueServerHopper {
 
 		if (unique) {
 			state = State.UNIQUE_WAITING_USER_LEAVE;
-			lastCommand = CommandKind.NONE;
+			pendingCommand = CommandKind.NONE;
 			commandSentAtMs = 0L;
 			locrawRequestedAtMs = 0L;
 			commandStartServer = "";
 			uniqueWaitServer = server;
-			clearWorldCheckLocraw();
 			queueUniqueSound();
-			FeatureChat.sendPrefixed("Unique Server Hopper", "UNIQUE " + server + ". Waiting until you leave this world.");
+			FeatureChat.sendPrefixed("Unique Server Hopper", "UNIQUE FOUND " + server);
 			return;
 		}
 
 		state = State.WAITING_COMMAND_1_READY;
-		actionAtMs = System.currentTimeMillis() + retryDelayMs();
+		pendingCommand = CommandKind.NONE;
+		actionAtMs = System.currentTimeMillis();
 		commandSentAtMs = 0L;
 		locrawRequestedAtMs = 0L;
 		commandStartServer = "";
 		uniqueWaitServer = "";
-		clearWorldCheckLocraw();
-		FeatureChat.sendPrefixed("Unique Server Hopper", "NOT UNIQUE " + server + ". Hopping again.");
 	}
 
 	private static void queueUniqueSound() {
@@ -571,21 +530,24 @@ public final class UniqueServerHopper {
 	}
 
 	private static void stopRuntime() {
+		startedByUser = false;
 		state = State.STOPPED;
-		lastCommand = CommandKind.NONE;
+		pendingCommand = CommandKind.NONE;
 		actionAtMs = 0L;
 		commandSentAtMs = 0L;
 		locrawRequestedAtMs = 0L;
-		nextWorldCheckLocrawAtMs = 0L;
-		worldCheckLocrawRequestedAtMs = 0L;
-		worldCheckLocrawPending = false;
 		commandStartServer = "";
 		uniqueWaitServer = "";
+		observedLevel = currentClientLevel();
 		uniqueSoundToken++;
 	}
 
 	private static boolean isWaitingForCommandWorldChange() {
 		return state == State.WAITING_COMMAND_1_WORLD_CHANGE || state == State.WAITING_COMMAND_2_WORLD_CHANGE;
+	}
+
+	private static boolean canRunAutomation() {
+		return isRunning() && Boolean.TRUE.equals(UiDefinitions.UNIQUE_SERVER_HOPPER.get());
 	}
 
 	private static CommandKind waitingWorldChangeCommand() {
@@ -618,26 +580,18 @@ public final class UniqueServerHopper {
 
 	private static void scheduleUniqueLeaveCheck(long now) {
 		state = State.WAITING_UNIQUE_LEAVE_LOCRAW_READY;
+		pendingCommand = CommandKind.NONE;
 		actionAtMs = now + locrawDelayMs();
 		commandSentAtMs = 0L;
 		locrawRequestedAtMs = 0L;
-		lastCommand = CommandKind.NONE;
 		commandStartServer = "";
-		clearWorldCheckLocraw();
-	}
-
-	private static void clearWorldCheckLocraw() {
-		worldCheckLocrawPending = false;
-		worldCheckLocrawRequestedAtMs = 0L;
-		nextWorldCheckLocrawAtMs = 0L;
 	}
 
 	private static void delayCurrentReadyState(long now, long delayMs) {
 		switch (state) {
 			case WAITING_COMMAND_1_READY,
 					WAITING_COMMAND_2_READY,
-					WAITING_COMMAND_2_AFTER_UNIQUE_LEAVE,
-					WAITING_RETRY -> actionAtMs = now + delayMs;
+					WAITING_COMMAND_2_AFTER_UNIQUE_LEAVE -> actionAtMs = now + delayMs;
 			default -> {
 			}
 		}
@@ -656,22 +610,6 @@ public final class UniqueServerHopper {
 				|| lower.contains("couldn't warp you")
 				|| lower.contains("couldnt warp you")
 				|| lower.contains("try again later")
-				|| lower.contains("you are sending commands too fast")
-				|| lower.contains("please slow down");
-	}
-
-	private static boolean isWarpFailureMessage(String text) {
-		String lower = text.toLowerCase(Locale.ROOT);
-		return lower.contains("dynamic_pool_error")
-				|| lower.contains("player_transfer_cooldown")
-				|| lower.contains("couldn't warp you")
-				|| lower.contains("couldnt warp you")
-				|| lower.contains("try again later");
-	}
-
-	private static boolean isCommandThrottleMessage(String text) {
-		String lower = text.toLowerCase(Locale.ROOT);
-		return lower.contains("player_transfer_cooldown")
 				|| lower.contains("you are sending commands too fast")
 				|| lower.contains("please slow down");
 	}
@@ -717,23 +655,9 @@ public final class UniqueServerHopper {
 		return Math.round(Mth.clamp(seconds, 0.2D, 10.0D) * 1000.0D);
 	}
 
-	private static String configuredWorldEnterDelayText() {
-		Double value = UiDefinitions.UNIQUE_SERVER_HOPPER_WORLD_ENTER_DELAY.get();
-		double seconds = value != null && Double.isFinite(value) ? value : 4.5D;
-		double clamped = Mth.clamp(seconds, 0.5D, 60.0D);
-		return String.format(Locale.ROOT, "%.1f", clamped);
-	}
-
-	private static String lastCommandName() {
-		return commandName(lastCommand);
-	}
-
-	private static String commandName(CommandKind command) {
-		return switch (command) {
-			case COMMAND_1 -> "Command 1";
-			case COMMAND_2 -> "Command 2";
-			default -> "command";
-		};
+	private static Object currentClientLevel() {
+		Minecraft client = Minecraft.getInstance();
+		return client == null ? null : client.level;
 	}
 
 	private static Locraw parseLocraw(Component message) {
@@ -784,7 +708,6 @@ public final class UniqueServerHopper {
 		WAITING_LOCRAW_RESPONSE,
 		WAITING_UNIQUE_LEAVE_LOCRAW_READY,
 		WAITING_UNIQUE_LEAVE_LOCRAW_RESPONSE,
-		WAITING_RETRY,
 		UNIQUE_WAITING_USER_LEAVE
 	}
 

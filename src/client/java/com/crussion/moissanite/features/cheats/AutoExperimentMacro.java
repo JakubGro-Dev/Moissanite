@@ -689,7 +689,8 @@ public final class AutoExperimentMacro {
 		ChestMenu menu = currentMenu(client);
 		if (menu == null) {
 			if (stepElapsedTicks > MENU_TIMEOUT_TICKS) {
-				stopInternal("Expected Superpairs board.");
+				sendMessage("Lost Superpairs menu, switching to claim handler.");
+				enterStep(MacroStep.WAIT_AFTER_SUPERPAIRS_CLAIM);
 			}
 			return;
 		}
@@ -698,13 +699,12 @@ public final class AutoExperimentMacro {
 		if (isRewardClaimTitle(title)) {
 			int claimSlot = findClaimSlot(menu, title);
 			if (claimSlot != -1) {
-				if (canClickSuperpairs() && clickSuperpairsSlot(client, menu, claimSlot)) {
-					lastSuperpairsClickTick = macroElapsedTicks;
+				if (clickSlot(client, menu, claimSlot)) {
 					debugRewardClaim("Clicked Superpairs reward claim slot " + claimSlot + ".");
-					enterStep(MacroStep.WAIT_AFTER_SUPERPAIRS_CLAIM);
 				}
-				return;
 			}
+			enterStep(MacroStep.WAIT_AFTER_SUPERPAIRS_CLAIM);
+			return;
 		}
 
 		if (isMainMenu(client)) {
@@ -714,7 +714,8 @@ public final class AutoExperimentMacro {
 
 		if (!isSuperpairsRunningTitle(client)) {
 			if (stepElapsedTicks > MENU_TIMEOUT_TICKS) {
-				stopInternal("Unexpected Superpairs menu: " + title + ".");
+				sendMessage("Unexpected Superpairs menu: " + title + ", switching to claim handler.");
+				enterStep(MacroStep.WAIT_AFTER_SUPERPAIRS_CLAIM);
 			}
 			return;
 		}
@@ -929,24 +930,10 @@ public final class AutoExperimentMacro {
 			return true;
 		}
 
-		if (isWaitingForSuperpairsPairConfirmation()) {
-			SuperpairsPair openPair = findOpenSuperpairsPair(menu, true);
-			if (openPair != null) {
-				startSuperpairsPair(openPair, true);
-				superpairsInstantFindPending = false;
-				superpairsInstantFindTargetSlot = -1;
-				if (clickActiveSuperpairsPair(client, menu)) {
-					sendMessage("Instant Find clicked matching open reward for " + openPair.reward() + ".");
-				}
-				return true;
-			}
-		}
-
-		int excludedSlot = superpairsOpenPairSlot;
-		int slot = findVisibleSuperpairsPriorityRewardSlot(menu, excludedSlot);
+		int slot = findVisibleSuperpairsPriorityRewardSlot(menu);
 		String target = "priority reward";
 		if (slot == -1) {
-			slot = findHighestVisibleEnchantingXpSlot(menu, excludedSlot);
+			slot = findHighestVisibleEnchantingXpSlot(menu);
 			target = "highest enchanting XP";
 		}
 		if (slot == -1) {
@@ -1221,12 +1208,8 @@ public final class AutoExperimentMacro {
 			return null;
 		}
 
-		return new SuperpairsPair(
-				openReward == null ? superpairsRewardName(openStack) : openReward.reward(),
-				superpairsOpenPairMatchKey,
-				superpairsOpenPairSlot,
-				mateSlot,
-				xp);
+		String reward = openReward == null ? superpairsRewardName(openStack) : openReward.reward();
+		return new SuperpairsPair(reward, superpairsOpenPairMatchKey, superpairsOpenPairSlot, mateSlot, xp);
 	}
 
 	private static int firstAvailableSuperpairsPairSlot(ChestMenu menu, SuperpairsPair pair) {
@@ -1700,19 +1683,7 @@ public final class AutoExperimentMacro {
 	}
 
 	private static boolean hasKnownSuperpairsPriorityReward(ChestMenu menu) {
-		if (menu == null) {
-			return false;
-		}
-		for (int slotIndex : SUPERPAIRS_BOARD_SLOTS) {
-			SuperpairsCachedReward cached = cachedSuperpairsReward(slotIndex);
-			if (cached == null || !cached.priority() || superpairsIgnoredPrioritySlots.contains(slotIndex)) {
-				continue;
-			}
-			if (isSuperpairsClickableSlot(menu, slotIndex)) {
-				return true;
-			}
-		}
-		return false;
+		return findVisibleSuperpairsPriorityRewardSlot(menu) != -1;
 	}
 
 	private static int findVisibleSuperpairsPriorityRewardSlot(ChestMenu menu) {
