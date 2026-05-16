@@ -15,6 +15,7 @@ import com.crussion.moissanite.features.cheats.AutoPearl;
 import com.crussion.moissanite.features.cheats.AutoPearlRefill;
 import com.crussion.moissanite.features.cheats.AutoRend_Reworked;
 import com.crussion.moissanite.features.cheats.KuudraPosTracker;
+import com.crussion.moissanite.features.cheats.RouteSystem;
 import com.crussion.moissanite.features.cheats.WardrobeKeybinds;
 import com.crussion.moissanite.features.dungeons.terminals.DungeonsTerminals;
 import com.crussion.moissanite.features.general.Zoom;
@@ -62,6 +63,7 @@ public class MoissaniteClient implements ClientModInitializer {
 		AutoDirection.init();
 		AutoPearl.init();
 		AutoPearlRefill.init();
+		RouteSystem.init();
 		KuudraPhaseTracker.init();
 		KuudraPosTracker.init();
 		KuudraEsp.init();

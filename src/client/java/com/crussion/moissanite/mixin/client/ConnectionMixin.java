@@ -3,6 +3,7 @@ package com.crussion.moissanite.mixin.client;
 import com.crussion.moissanite.features.cheats.WardrobeKeybinds;
 import com.crussion.moissanite.features.dungeons.terminals.DungeonsTerminals;
 import com.crussion.moissanite.features.kuudra.KuudraAutoPickupSupply;
+import com.crussion.moissanite.util.rotation.RotationController;
 
 import io.netty.channel.ChannelFutureListener;
 import net.minecraft.network.Connection;
@@ -21,6 +22,7 @@ public class ConnectionMixin {
 		if (packet instanceof ServerboundContainerClosePacket && WardrobeKeybinds.isEnabledOrActive()) {
 			WardrobeKeybinds.onClosePacketSent();
 		}
+		RotationController.onPacketSent(packet);
 	}
 
 	@Inject(method = "send(Lnet/minecraft/network/protocol/Packet;Lio/netty/channel/ChannelFutureListener;)V", at = @At("HEAD"))
@@ -29,6 +31,7 @@ public class ConnectionMixin {
 		if (packet instanceof ServerboundContainerClosePacket && WardrobeKeybinds.isEnabledOrActive()) {
 			WardrobeKeybinds.onClosePacketSent();
 		}
+		RotationController.onPacketSent(packet);
 	}
 
 	@Inject(method = "send(Lnet/minecraft/network/protocol/Packet;Lio/netty/channel/ChannelFutureListener;Z)V", at = @At("HEAD"), cancellable = true)
@@ -39,6 +42,8 @@ public class ConnectionMixin {
 		}
 		if (DungeonsTerminals.onPacketSent(packet)) {
 			ci.cancel();
+			return;
 		}
+		RotationController.onPacketSent(packet);
 	}
 }

@@ -1,9 +1,12 @@
 package com.crussion.moissanite.util.rotation;
 
+import java.util.concurrent.ThreadLocalRandom;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 
@@ -31,11 +34,22 @@ public final class RotationController {
 	private static final float PITCH_GRAPH_SCALE = 85.0f;
 	private static final float GRAPH_EXPONENTIAL_SHAPE = 4.35f;
 	private static final float GRAPH_MINIMUM_JERK_WEIGHT = 0.68f;
-	private static final float YAW_DEADZONE = 0.06f;
-	private static final float PITCH_DEADZONE = 0.05f;
+	private static final float GRAPH_SIGMOID_SHAPE = 10.0f;
+	private static final double GRAPH_SIGMOID_MIN = sigmoid(0.0D);
+	private static final double GRAPH_SIGMOID_RANGE = sigmoid(1.0D) - GRAPH_SIGMOID_MIN;
+	private static final float PROFILE_RESTART_YAW_DELTA = 3.0f;
+	private static final float PROFILE_RESTART_PITCH_DELTA = 2.0f;
+	private static final float PROFILE_MIN_DISTANCE = 1.4f;
+	private static final float PROFILE_STRONG_OVERSHOOT_MAX = 7.2f;
+	private static final float PROFILE_NORMAL_OVERSHOOT_MAX = 4.6f;
+	private static final float PROFILE_PITCH_OVERSHOOT_RATIO = 0.55f;
+	private static final float PROFILE_TREMOR_MAX_YAW = 0.34f;
+	private static final float PROFILE_TREMOR_MAX_PITCH = 0.22f;
+	private static final float YAW_DEADZONE = 0.03f;
+	private static final float PITCH_DEADZONE = 0.03f;
 	private static final float DEFAULT_ROTATION_MULTIPLIER = 1.0f;
-	private static final float DEFAULT_ROTATE_FINISH_YAW = 0.2f;
-	private static final float DEFAULT_ROTATE_FINISH_PITCH = 0.2f;
+	private static final float DEFAULT_ROTATE_FINISH_YAW = 0.01f;
+	private static final float DEFAULT_ROTATE_FINISH_PITCH = 0.01f;
 
 	private static boolean initialized;
 	private static float yawVelocity;
@@ -49,6 +63,40 @@ public final class RotationController {
 	private static float rotateFinishYaw = DEFAULT_ROTATE_FINISH_YAW;
 	private static float rotateFinishPitch = DEFAULT_ROTATE_FINISH_PITCH;
 	private static long lastRotateStepNanos;
+	private static RotationMode rotationMode = RotationMode.DEFAULT;
+	private static RotationMode rotationProfileMode = RotationMode.DEFAULT;
+	private static float rotationProfileStrength;
+	private static float rotationProfileDistance;
+	private static float rotationProfileYawDistance;
+	private static float rotationProfilePitchDistance;
+	private static float rotationProfileElapsedSeconds;
+	private static float rotationProfileYawOvershoot;
+	private static float rotationProfilePitchOvershoot;
+	private static float rotationProfileYawDrift;
+	private static float rotationProfilePitchDrift;
+	private static float rotationProfileYawTremorAmplitude;
+	private static float rotationProfilePitchTremorAmplitude;
+	private static float rotationProfileYawSpringScale = 1.0f;
+	private static float rotationProfilePitchSpringScale = 1.0f;
+	private static float rotationProfileYawDampingScale = 1.0f;
+	private static float rotationProfilePitchDampingScale = 1.0f;
+	private static float rotationProfileYawSpeedScale = 1.0f;
+	private static float rotationProfilePitchSpeedScale = 1.0f;
+	private static float rotationProfileYawAccelerationScale = 1.0f;
+	private static float rotationProfilePitchAccelerationScale = 1.0f;
+	private static float rotationProfileYawPulseAmplitude;
+	private static float rotationProfilePitchPulseAmplitude;
+	private static float rotationProfileYawPulseFrequency;
+	private static float rotationProfilePitchPulseFrequency;
+	private static float rotationProfileYawPulsePhase;
+	private static float rotationProfilePitchPulsePhase;
+	private static float rotationProfileYawTremorFrequency;
+	private static float rotationProfilePitchTremorFrequency;
+	private static float rotationProfileYawTremorPhase;
+	private static float rotationProfilePitchTremorPhase;
+	private static long lastSentRotationAtMs;
+	private static float lastSentYaw;
+	private static float lastSentPitch;
 
 	private RotationController() {
 	}
@@ -111,18 +159,75 @@ public final class RotationController {
 			return false;
 		}
 
-		rotateTargetYaw = Mth.wrapDegrees((float) yaw);
-		rotateTargetPitch = Mth.clamp((float) pitch, -90.0F, 90.0F);
-		rotateTaskMultiplier = sanitizeRotationMultiplier(multiplier);
-		rotateFinishYaw = sanitizeFinishTolerance(finishYaw, DEFAULT_ROTATE_FINISH_YAW);
-		rotateFinishPitch = sanitizeFinishTolerance(finishPitch, DEFAULT_ROTATE_FINISH_PITCH);
+		float nextTargetYaw = Mth.wrapDegrees((float) yaw);
+		float nextTargetPitch = Mth.clamp((float) pitch, -90.0F, 90.0F);
+		float nextMultiplier = sanitizeRotationMultiplier(multiplier);
+		float nextFinishYaw = sanitizeFinishTolerance(finishYaw, DEFAULT_ROTATE_FINISH_YAW);
+		float nextFinishPitch = sanitizeFinishTolerance(finishPitch, DEFAULT_ROTATE_FINISH_PITCH);
+		boolean restartProfile = shouldRestartProfile(nextTargetYaw, nextTargetPitch);
+
+		rotateTargetYaw = nextTargetYaw;
+		rotateTargetPitch = nextTargetPitch;
+		rotateTaskMultiplier = nextMultiplier;
+		rotateFinishYaw = nextFinishYaw;
+		rotateFinishPitch = nextFinishPitch;
 		rotateTaskActive = true;
 		lastRotateStepNanos = 0L;
+		if (restartProfile) {
+			startRotationProfile(client, nextTargetYaw, nextTargetPitch);
+		}
 		return true;
 	}
 
 	public static boolean isRotating() {
 		return rotateTaskActive;
+	}
+
+	public static void setRotationMode(RotationMode mode) {
+		RotationMode nextMode = mode == null ? RotationMode.DEFAULT : mode;
+		if (rotationMode == nextMode) {
+			return;
+		}
+		rotationMode = nextMode;
+		resetRotationMotion();
+		resetRotationProfile();
+	}
+
+	public static RotationMode rotationMode() {
+		return rotationMode;
+	}
+
+	public static void onPacketSent(Packet<?> packet) {
+		if (!(packet instanceof ServerboundMovePlayerPacket movePacket) || !movePacket.hasRotation()) {
+			return;
+		}
+		lastSentYaw = Mth.wrapDegrees(movePacket.getYRot(lastSentYaw));
+		lastSentPitch = Mth.clamp(movePacket.getXRot(lastSentPitch), -90.0f, 90.0f);
+		lastSentRotationAtMs = System.currentTimeMillis();
+	}
+
+	public static boolean hasRecentlySentRotation(double yaw, double pitch, long maxAgeMs, double toleranceDegrees) {
+		if (lastSentRotationAtMs <= 0L || System.currentTimeMillis() - lastSentRotationAtMs > Math.max(0L, maxAgeMs)) {
+			return false;
+		}
+		float targetYaw = Mth.wrapDegrees((float) yaw);
+		float targetPitch = Mth.clamp((float) pitch, -90.0f, 90.0f);
+		double tolerance = Math.max(0.0D, toleranceDegrees);
+		return Math.abs(Mth.wrapDegrees(targetYaw - lastSentYaw)) <= tolerance
+				&& Math.abs(targetPitch - lastSentPitch) <= tolerance;
+	}
+
+	public static boolean sendCurrentRotationPacket() {
+		Minecraft client = Minecraft.getInstance();
+		if (client == null || client.player == null || client.getConnection() == null) {
+			return false;
+		}
+		client.getConnection().send(new ServerboundMovePlayerPacket.Rot(
+				client.player.getYRot(),
+				client.player.getXRot(),
+				client.player.onGround(),
+				client.player.horizontalCollision));
+		return true;
 	}
 
 	public static void cancelRotation() {
@@ -190,8 +295,16 @@ public final class RotationController {
 		boolean exactYawFinish = rotateFinishYaw <= 0.0f;
 		boolean exactPitchFinish = rotateFinishPitch <= 0.0f;
 
-		float yawGraph = rotationGraph(Math.abs(yawError), YAW_GRAPH_SCALE);
-		float pitchGraph = rotationGraph(Math.abs(pitchError), PITCH_GRAPH_SCALE);
+		RotationMode mode = rotationMode;
+		rotationProfileElapsedSeconds += dtSeconds;
+		float remainingDistance = rotationDistance(Math.abs(yawError), Math.abs(pitchError));
+		float adjustedTargetYaw = targetYaw + humanizedTargetOffset(yawError, remainingDistance, true);
+		float adjustedTargetPitch = Mth.clamp(targetPitch + humanizedTargetOffset(pitchError, remainingDistance, false), -90.0f, 90.0f);
+		yawError = Mth.wrapDegrees(adjustedTargetYaw - client.player.getYRot());
+		pitchError = adjustedTargetPitch - client.player.getXRot();
+
+		float yawGraph = rotationGraph(Math.abs(yawError), YAW_GRAPH_SCALE, mode);
+		float pitchGraph = rotationGraph(Math.abs(pitchError), PITCH_GRAPH_SCALE, mode);
 
 		float yawStep = springStep(yawError, yawGraph, true, effectiveDt);
 		float pitchStep = springStep(pitchError, pitchGraph, false, effectiveDt);
@@ -244,6 +357,12 @@ public final class RotationController {
 		float maxAcceleration = yawAxis
 				? Mth.lerp(graph, YAW_ACCEL_MIN, YAW_ACCEL_MAX)
 				: Mth.lerp(graph, PITCH_ACCEL_MIN, PITCH_ACCEL_MAX);
+		float dynamicScale = dynamicProfileScale(yawAxis);
+		spring *= (yawAxis ? rotationProfileYawSpringScale : rotationProfilePitchSpringScale) * dynamicScale;
+		damping *= yawAxis ? rotationProfileYawDampingScale : rotationProfilePitchDampingScale;
+		maxSpeed *= (yawAxis ? rotationProfileYawSpeedScale : rotationProfilePitchSpeedScale) * dynamicScale;
+		maxAcceleration *= (yawAxis ? rotationProfileYawAccelerationScale : rotationProfilePitchAccelerationScale)
+				* Mth.clamp(dynamicScale, 0.75f, 1.25f);
 
 		float velocity = yawAxis ? yawVelocity : pitchVelocity;
 		if (Math.abs(error) > 1.0e-4f && velocity != 0.0f && Math.signum(error) != Math.signum(velocity)) {
@@ -306,19 +425,224 @@ public final class RotationController {
 		return step;
 	}
 
-	private static float rotationGraph(float absError, float fullScale) {
+	private static float rotationGraph(float absError, float fullScale, RotationMode mode) {
 		if (absError <= 1.0e-6f) {
 			return 0.0f;
 		}
 
 		float t = Mth.clamp(absError / fullScale, 0.0f, 1.0f);
-		float minimumJerk = t * t * t * (10.0f + (t * (-15.0f + (6.0f * t))));
-		float exponential = (float) ((1.0D - Math.exp(-GRAPH_EXPONENTIAL_SHAPE * t))
+		float graph = switch (mode) {
+			case HUMANIZED_STRONG -> adaptiveSpringGraph(t);
+			case HUMANIZED -> minimumJerkGraph(t);
+			case LINEAR -> t;
+			case SMOOTHSTEP -> smoothstepGraph(t);
+			case SINE -> sineGraph(t);
+			case MINIMUM_JERK -> minimumJerkGraph(t);
+			case SIGMOID -> sigmoidGraph(t);
+			case EXPONENTIAL -> exponentialGraph(t);
+			case ADAPTIVE_SPRING -> adaptiveSpringGraph(t);
+		};
+		return Mth.clamp(graph, 0.0f, 1.0f);
+	}
+
+	private static float adaptiveSpringGraph(float t) {
+		float minimumJerk = minimumJerkGraph(t);
+		float exponential = exponentialGraph(t);
+		return Mth.lerp(GRAPH_MINIMUM_JERK_WEIGHT, exponential, minimumJerk);
+	}
+
+	private static float smoothstepGraph(float t) {
+		return t * t * (3.0f - (2.0f * t));
+	}
+
+	private static float sineGraph(float t) {
+		return (float) Math.sin(t * Math.PI * 0.5D);
+	}
+
+	private static float minimumJerkGraph(float t) {
+		return t * t * t * (10.0f + (t * (-15.0f + (6.0f * t))));
+	}
+
+	private static float sigmoidGraph(float t) {
+		return (float) ((sigmoid(t) - GRAPH_SIGMOID_MIN) / GRAPH_SIGMOID_RANGE);
+	}
+
+	private static double sigmoid(double t) {
+		return 1.0D / (1.0D + Math.exp(-GRAPH_SIGMOID_SHAPE * (t - 0.5D)));
+	}
+
+	private static float exponentialGraph(float t) {
+		return (float) ((1.0D - Math.exp(-GRAPH_EXPONENTIAL_SHAPE * t))
 				/ (1.0D - Math.exp(-GRAPH_EXPONENTIAL_SHAPE)));
-		return Mth.clamp(
-				(Mth.lerp(GRAPH_MINIMUM_JERK_WEIGHT, exponential, minimumJerk)),
-				0.0f,
-				1.0f);
+	}
+
+	private static boolean shouldRestartProfile(float targetYaw, float targetPitch) {
+		if (!rotateTaskActive || rotationProfileMode != rotationMode || rotationProfileDistance <= 0.0f) {
+			return true;
+		}
+		return Math.abs(Mth.wrapDegrees(targetYaw - rotateTargetYaw)) > PROFILE_RESTART_YAW_DELTA
+				|| Math.abs(targetPitch - rotateTargetPitch) > PROFILE_RESTART_PITCH_DELTA;
+	}
+
+	private static void startRotationProfile(Minecraft client, float targetYaw, float targetPitch) {
+		resetRotationProfile();
+		float yawDistance = Math.abs(Mth.wrapDegrees(targetYaw - client.player.getYRot()));
+		float pitchDistance = Math.abs(targetPitch - client.player.getXRot());
+		float distance = rotationDistance(yawDistance, pitchDistance);
+		rotationProfileMode = rotationMode;
+		rotationProfileYawDistance = yawDistance;
+		rotationProfilePitchDistance = pitchDistance;
+		rotationProfileDistance = distance;
+		rotationProfileStrength = rotationProfileStrength(rotationMode, distance);
+		if (rotationProfileStrength <= 0.0f) {
+			return;
+		}
+
+		ThreadLocalRandom random = ThreadLocalRandom.current();
+		float yawDirection = Math.signum(Mth.wrapDegrees(targetYaw - client.player.getYRot()));
+		float pitchDirection = Math.signum(targetPitch - client.player.getXRot());
+		float overshootMax = rotationMode == RotationMode.HUMANIZED_STRONG ? PROFILE_STRONG_OVERSHOOT_MAX : PROFILE_NORMAL_OVERSHOOT_MAX;
+		rotationProfileYawOvershoot = yawDirection * overshootAmount(yawDistance, overshootMax, random);
+		rotationProfilePitchOvershoot = pitchDirection * overshootAmount(pitchDistance, overshootMax * PROFILE_PITCH_OVERSHOOT_RATIO, random);
+		rotationProfileYawDrift = randomRange(random, -1.0f, 1.0f) * Math.min(1.45f, 0.010f * yawDistance + 0.24f) * rotationProfileStrength;
+		rotationProfilePitchDrift = randomRange(random, -1.0f, 1.0f) * Math.min(0.9f, 0.010f * pitchDistance + 0.15f) * rotationProfileStrength;
+		rotationProfileYawTremorAmplitude = Math.min(PROFILE_TREMOR_MAX_YAW, 0.020f + distance * 0.0025f) * rotationProfileStrength;
+		rotationProfilePitchTremorAmplitude = Math.min(PROFILE_TREMOR_MAX_PITCH, 0.014f + distance * 0.0017f) * rotationProfileStrength;
+		rotationProfileYawSpringScale = randomRange(random, 0.78f, 1.24f);
+		rotationProfilePitchSpringScale = randomRange(random, 0.74f, 1.18f);
+		rotationProfileYawDampingScale = randomRange(random, 0.82f, 1.18f);
+		rotationProfilePitchDampingScale = randomRange(random, 0.86f, 1.24f);
+		rotationProfileYawSpeedScale = randomRange(random, 0.80f, 1.34f);
+		rotationProfilePitchSpeedScale = randomRange(random, 0.76f, 1.22f);
+		rotationProfileYawAccelerationScale = randomRange(random, 0.74f, 1.35f);
+		rotationProfilePitchAccelerationScale = randomRange(random, 0.72f, 1.25f);
+		rotationProfileYawPulseAmplitude = randomRange(random, 0.04f, 0.18f) * rotationProfileStrength;
+		rotationProfilePitchPulseAmplitude = randomRange(random, 0.035f, 0.15f) * rotationProfileStrength;
+		rotationProfileYawPulseFrequency = randomRange(random, 5.5f, 12.5f);
+		rotationProfilePitchPulseFrequency = randomRange(random, 5.0f, 11.0f);
+		rotationProfileYawPulsePhase = randomRange(random, 0.0f, (float) (Math.PI * 2.0D));
+		rotationProfilePitchPulsePhase = randomRange(random, 0.0f, (float) (Math.PI * 2.0D));
+		rotationProfileYawTremorFrequency = randomRange(random, 16.0f, 28.0f);
+		rotationProfilePitchTremorFrequency = randomRange(random, 14.0f, 24.0f);
+		rotationProfileYawTremorPhase = randomRange(random, 0.0f, (float) (Math.PI * 2.0D));
+		rotationProfilePitchTremorPhase = randomRange(random, 0.0f, (float) (Math.PI * 2.0D));
+	}
+
+	private static float rotationProfileStrength(RotationMode mode, float distance) {
+		if (distance < PROFILE_MIN_DISTANCE) {
+			return 0.0f;
+		}
+		float distanceScale = Mth.clamp((distance - PROFILE_MIN_DISTANCE) / 42.0f, 0.0f, 1.0f);
+		float base = switch (mode) {
+			case HUMANIZED_STRONG -> 1.0f;
+			case HUMANIZED -> 0.72f;
+			case ADAPTIVE_SPRING -> 0.42f;
+			case MINIMUM_JERK, SIGMOID, EXPONENTIAL, SINE, SMOOTHSTEP -> 0.34f;
+			case LINEAR -> 0.22f;
+		};
+		return base * (0.28f + distanceScale * 0.72f);
+	}
+
+	private static float overshootAmount(float distance, float maxOvershoot, ThreadLocalRandom random) {
+		if (distance < 3.0f) {
+			return 0.0f;
+		}
+		float amount = Math.min(maxOvershoot, distance * randomRange(random, 0.018f, 0.045f));
+		return amount * rotationProfileStrength;
+	}
+
+	private static float humanizedTargetOffset(float trueError, float remainingDistance, boolean yawAxis) {
+		if (rotationProfileStrength <= 0.0f || rotationProfileDistance <= PROFILE_MIN_DISTANCE) {
+			return 0.0f;
+		}
+		float finishGuard = yawAxis
+				? Math.max(0.55f, rotateFinishYaw * 2.8f)
+				: Math.max(0.42f, rotateFinishPitch * 2.8f);
+		if (Math.abs(trueError) <= finishGuard) {
+			return 0.0f;
+		}
+
+		float progress = 1.0f - Mth.clamp(remainingDistance / rotationProfileDistance, 0.0f, 1.0f);
+		float overshootWeight = smoothstepGraph(Mth.clamp((progress - 0.16f) / 0.34f, 0.0f, 1.0f))
+				* (1.0f - smoothstepGraph(Mth.clamp((progress - 0.70f) / 0.24f, 0.0f, 1.0f)));
+		float driftWeight = 1.0f - smoothstepGraph(Mth.clamp((progress - 0.48f) / 0.36f, 0.0f, 1.0f));
+		float tremorWeight = (1.0f - smoothstepGraph(Mth.clamp((progress - 0.58f) / 0.30f, 0.0f, 1.0f)))
+				* Mth.clamp((Math.abs(trueError) - finishGuard) / 14.0f, 0.0f, 1.0f);
+
+		float overshoot = yawAxis ? rotationProfileYawOvershoot : rotationProfilePitchOvershoot;
+		float drift = yawAxis ? rotationProfileYawDrift : rotationProfilePitchDrift;
+		float tremor = profileTremor(yawAxis) * tremorWeight;
+		return overshoot * overshootWeight + drift * driftWeight + tremor;
+	}
+
+	private static float profileTremor(boolean yawAxis) {
+		float amplitude = yawAxis ? rotationProfileYawTremorAmplitude : rotationProfilePitchTremorAmplitude;
+		float frequency = yawAxis ? rotationProfileYawTremorFrequency : rotationProfilePitchTremorFrequency;
+		float phase = yawAxis ? rotationProfileYawTremorPhase : rotationProfilePitchTremorPhase;
+		float time = rotationProfileElapsedSeconds;
+		float wave = (float) Math.sin(time * frequency + phase);
+		wave += 0.42f * (float) Math.sin(time * frequency * 1.73f + phase * 0.61f);
+		return amplitude * wave;
+	}
+
+	private static float dynamicProfileScale(boolean yawAxis) {
+		if (rotationProfileStrength <= 0.0f) {
+			return 1.0f;
+		}
+		float amplitude = yawAxis ? rotationProfileYawPulseAmplitude : rotationProfilePitchPulseAmplitude;
+		float frequency = yawAxis ? rotationProfileYawPulseFrequency : rotationProfilePitchPulseFrequency;
+		float phase = yawAxis ? rotationProfileYawPulsePhase : rotationProfilePitchPulsePhase;
+		float wave = (float) Math.sin(rotationProfileElapsedSeconds * frequency + phase);
+		wave += 0.35f * (float) Math.sin(rotationProfileElapsedSeconds * frequency * 1.91f + phase * 0.37f);
+		return Mth.clamp(1.0f + amplitude * wave, 0.62f, 1.46f);
+	}
+
+	private static float rotationDistance(float yawDistance, float pitchDistance) {
+		return (float) Math.sqrt(yawDistance * yawDistance + pitchDistance * pitchDistance);
+	}
+
+	private static float randomRange(ThreadLocalRandom random, float min, float max) {
+		return min + random.nextFloat() * (max - min);
+	}
+
+	private static void resetRotationMotion() {
+		yawVelocity = 0.0f;
+		pitchVelocity = 0.0f;
+		yawCarry = 0.0f;
+		pitchCarry = 0.0f;
+	}
+
+	private static void resetRotationProfile() {
+		rotationProfileMode = rotationMode;
+		rotationProfileStrength = 0.0f;
+		rotationProfileDistance = 0.0f;
+		rotationProfileYawDistance = 0.0f;
+		rotationProfilePitchDistance = 0.0f;
+		rotationProfileElapsedSeconds = 0.0f;
+		rotationProfileYawOvershoot = 0.0f;
+		rotationProfilePitchOvershoot = 0.0f;
+		rotationProfileYawDrift = 0.0f;
+		rotationProfilePitchDrift = 0.0f;
+		rotationProfileYawTremorAmplitude = 0.0f;
+		rotationProfilePitchTremorAmplitude = 0.0f;
+		rotationProfileYawSpringScale = 1.0f;
+		rotationProfilePitchSpringScale = 1.0f;
+		rotationProfileYawDampingScale = 1.0f;
+		rotationProfilePitchDampingScale = 1.0f;
+		rotationProfileYawSpeedScale = 1.0f;
+		rotationProfilePitchSpeedScale = 1.0f;
+		rotationProfileYawAccelerationScale = 1.0f;
+		rotationProfilePitchAccelerationScale = 1.0f;
+		rotationProfileYawPulseAmplitude = 0.0f;
+		rotationProfilePitchPulseAmplitude = 0.0f;
+		rotationProfileYawPulseFrequency = 0.0f;
+		rotationProfilePitchPulseFrequency = 0.0f;
+		rotationProfileYawPulsePhase = 0.0f;
+		rotationProfilePitchPulsePhase = 0.0f;
+		rotationProfileYawTremorFrequency = 0.0f;
+		rotationProfilePitchTremorFrequency = 0.0f;
+		rotationProfileYawTremorPhase = 0.0f;
+		rotationProfilePitchTremorPhase = 0.0f;
 	}
 
 	private static float sanitizeRotationMultiplier(double multiplier) {
@@ -336,10 +660,8 @@ public final class RotationController {
 	}
 
 	private static void resetRotationController() {
-		yawVelocity = 0.0f;
-		pitchVelocity = 0.0f;
-		yawCarry = 0.0f;
-		pitchCarry = 0.0f;
+		resetRotationMotion();
+		resetRotationProfile();
 		rotateTaskMultiplier = DEFAULT_ROTATION_MULTIPLIER;
 		rotateFinishYaw = DEFAULT_ROTATE_FINISH_YAW;
 		rotateFinishPitch = DEFAULT_ROTATE_FINISH_PITCH;

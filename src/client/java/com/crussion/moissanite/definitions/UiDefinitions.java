@@ -4,12 +4,15 @@ import com.crussion.moissanite.features.cheats.AutoPearl;
 import com.crussion.moissanite.features.cheats.AutoRend_Reworked;
 import com.crussion.moissanite.features.cheats.AutoExperimentMacro;
 import com.crussion.moissanite.features.cheats.KuudraPosTracker;
+import com.crussion.moissanite.features.cheats.RouteSystem;
 import com.crussion.moissanite.features.kuudra.KuudraAutoOpenChest;
 import com.crussion.moissanite.features.kuudra.KuudraAutoPickupSupply;
 import com.crussion.moissanite.features.visual.RenderImageOnScreen;
 import com.crussion.moissanite.features.visual.storage.StorageOverlayFeature;
 import com.crussion.moissanite.features.mining.UniqueServerHopper;
 import com.crussion.moissanite.update.ModUpdater;
+import com.crussion.moissanite.util.rotation.RotationController;
+import com.crussion.moissanite.util.rotation.RotationMode;
 import com.crussion.moissanite.ui.UiEntrypoints;
 import com.crussion.moissanite.ui.data.UiCatalog;
 import com.crussion.moissanite.ui.data.UiCategory;
@@ -427,6 +430,7 @@ public final class UiDefinitions {
 	public static final UiSection CHEATS_GENERAL = CHEATS.section("General");
 	public static final UiSection WARDROBE_KEYBINDS = CHEATS.section("Wardrobe Keybinds");
 	public static final UiSection CHEATS_AUTO_EXPERIMENTATION = CHEATS.section("Auto Experimentation");
+	public static final UiSection CHEATS_ROUTES = CHEATS.section("Routes");
 	public static final UiSection KUUDRA_NORMAL = KUUDRA.section("Normal");
 	public static final UiSection KUUDRA_CHEATS = KUUDRA.section("Cheats");
 
@@ -475,6 +479,33 @@ public final class UiDefinitions {
 			.button("Auto Enchanting Start", "Start", button -> AutoExperimentMacro.start());
 	public static final UiButton AUTO_EXPERIMENTS_MACRO_STOP = CHEATS_AUTO_EXPERIMENTATION
 			.button("Auto Enchanting Stop", "Stop", button -> AutoExperimentMacro.stop());
+
+	public static final UiSwitch ROUTE_SYSTEM = CHEATS_ROUTES.toggle("Route System", false);
+	public static final UiButton ROUTE_MANAGER_OPEN = CHEATS_ROUTES.button("Route Manager", "Open",
+			button -> UiEntrypoints.open(ScreenIds.ROUTES));
+	public static final UiDropdown ROUTE_ISLAND = CHEATS_ROUTES.dropdown("Route Island", "Hub");
+	public static final UiDropdown ROUTE_SELECT = CHEATS_ROUTES.dropdown("Route", "");
+	public static final UiInput ROUTE_NEW_NAME = CHEATS_ROUTES.input("New Route Name", "").maxLength(80);
+	public static final UiButton ROUTE_CREATE = CHEATS_ROUTES.button("Add Route", "+", button -> RouteSystem.createRouteFromUi());
+	public static final UiButton ROUTE_EDIT = CHEATS_ROUTES.button("Edit Route", "Edit", button -> RouteSystem.selectSelectedRouteForEditingFromUi());
+	public static final UiButton ROUTE_REMOVE = CHEATS_ROUTES.button("Remove Route", "Remove", button -> RouteSystem.removeSelectedRouteFromUi());
+	public static final UiSwitch ROUTE_ACTIVE = CHEATS_ROUTES.toggle("Route Active", false);
+	public static final UiButton ROUTE_SAVE = CHEATS_ROUTES.button("Save Routes", "Save", button -> RouteSystem.saveRoutesFromUi());
+	public static final UiButton ROUTE_RELOAD = CHEATS_ROUTES.button("Reload Routes", "Reload", button -> RouteSystem.reloadRoutesFromUi());
+	public static final UiNumber ROUTE_TP_DELAY = CHEATS_ROUTES.number("TP Delay MS", 0, 10000, 200);
+	public static final UiNumber ROUTE_ETH_DELAY = CHEATS_ROUTES.number("ETH Delay MS", 0, 10000, 200);
+	public static final UiNumber ROUTE_WALK_DELAY = CHEATS_ROUTES.number("Walk Delay MS", 0, 10000, 0);
+	public static final UiNumber ROUTE_ACTION_DELAY = CHEATS_ROUTES.number("Delay Between Actions MS", 0, 10000, 200);
+	public static final UiNumber ROUTE_START_DELAY = CHEATS_ROUTES.number("Start Delay MS", 0, 10000, 0);
+	public static final UiNumber ROUTE_ETH_SHIFT_DELAY = CHEATS_ROUTES.number("ETH Shift Delay Ticks", 0, 5, 2);
+	public static final UiSwitch ROUTE_USE_OLD_SHIFT_HEIGHT = CHEATS_ROUTES.toggle("Use Old Shift Height", false);
+	public static final UiSlider ROUTE_ROTATION_MULTIPLIER = CHEATS_ROUTES.slider("Route Rotation Multiplier", 0.0, 2.0, 0.5, 0.1);
+	public static final UiSwitch ROUTE_DELAY_AFTER_ROTATION = CHEATS_ROUTES.toggle("Delay After Rotation", false);
+	public static final UiSwitch ROUTE_RENDER = CHEATS_ROUTES.toggle("Render Routes", true);
+	public static final UiSwitch ROUTE_RENDER_THROUGH_WALLS = CHEATS_ROUTES.toggle("Render Through Walls", true);
+	public static final UiColor ROUTE_START_COLOR = CHEATS_ROUTES.color("Start Color", UiColor.argb(75, 220, 255, 255));
+	public static final UiColor ROUTE_POINT_COLOR = CHEATS_ROUTES.color("Point Color", UiColor.argb(85, 120, 255, 255));
+	public static final UiColor ROUTE_END_COLOR = CHEATS_ROUTES.color("End Color", UiColor.argb(255, 95, 95, 255));
 
 	public static final UiSwitch AUTO_DIRECTION = KUUDRA_CHEATS.toggle("Auto Direction", false);
 	public static final UiSlider AUTO_DIRECTION_ROTATION_MULTIPLIER = KUUDRA_CHEATS.slider(
@@ -573,6 +604,31 @@ public final class UiDefinitions {
 		AUTO_EXPERIMENTS_SERUM_COUNT.visibleWhen(AUTO_EXPERIMENTS);
 		AUTO_EXPERIMENTS_GET_MAX_XP.visibleWhen(AUTO_EXPERIMENTS);
 		AUTO_EXPERIMENTS_MACRO_STOP.visibleWhen(AutoExperimentMacro::isRunning);
+		ROUTE_ISLAND.setOptions(RouteSystem.routeIslandDisplayNames());
+		ROUTE_MANAGER_OPEN.visibleWhen(ROUTE_SYSTEM);
+		ROUTE_ISLAND.visibleWhen(() -> false);
+		ROUTE_SELECT.visibleWhen(() -> false);
+		ROUTE_NEW_NAME.visibleWhen(() -> false);
+		ROUTE_CREATE.visibleWhen(() -> false);
+		ROUTE_EDIT.visibleWhen(() -> false);
+		ROUTE_REMOVE.visibleWhen(() -> false);
+		ROUTE_ACTIVE.visibleWhen(() -> false);
+		ROUTE_SAVE.visibleWhen(() -> false);
+		ROUTE_RELOAD.visibleWhen(() -> false);
+		ROUTE_TP_DELAY.visibleWhen(ROUTE_SYSTEM);
+		ROUTE_ETH_DELAY.visibleWhen(ROUTE_SYSTEM);
+		ROUTE_WALK_DELAY.visibleWhen(ROUTE_SYSTEM);
+		ROUTE_ACTION_DELAY.visibleWhen(ROUTE_SYSTEM);
+		ROUTE_START_DELAY.visibleWhen(ROUTE_SYSTEM);
+		ROUTE_ETH_SHIFT_DELAY.visibleWhen(ROUTE_SYSTEM);
+		ROUTE_USE_OLD_SHIFT_HEIGHT.visibleWhen(ROUTE_SYSTEM);
+		ROUTE_ROTATION_MULTIPLIER.visibleWhen(ROUTE_SYSTEM);
+		ROUTE_DELAY_AFTER_ROTATION.visibleWhen(ROUTE_SYSTEM);
+		ROUTE_RENDER.visibleWhen(ROUTE_SYSTEM);
+		ROUTE_RENDER_THROUGH_WALLS.visibleWhen(() -> Boolean.TRUE.equals(ROUTE_SYSTEM.get()) && Boolean.TRUE.equals(ROUTE_RENDER.get()));
+		ROUTE_START_COLOR.visibleWhen(() -> Boolean.TRUE.equals(ROUTE_SYSTEM.get()) && Boolean.TRUE.equals(ROUTE_RENDER.get()));
+		ROUTE_POINT_COLOR.visibleWhen(() -> Boolean.TRUE.equals(ROUTE_SYSTEM.get()) && Boolean.TRUE.equals(ROUTE_RENDER.get()));
+		ROUTE_END_COLOR.visibleWhen(() -> Boolean.TRUE.equals(ROUTE_SYSTEM.get()) && Boolean.TRUE.equals(ROUTE_RENDER.get()));
 		AUTO_DIRECTION_ROTATION_MULTIPLIER.visibleWhen(AUTO_DIRECTION);
 		AUTO_DIRECTION_AIM_AT_KUUDRA.visibleWhen(AUTO_DIRECTION);
 		AUTO_DIRECTION_AIM_AT_KUUDRA_TICKS.visibleWhen(() -> Boolean.TRUE.equals(AUTO_DIRECTION.get())
@@ -624,13 +680,15 @@ public final class UiDefinitions {
 		REND_DAMAGE_AUTO_REND_SCREEN.visibleWhen(REND_DAMAGE);
 	}
 
-	// Spoofer
+	// Settings
 
 	// Sections
+	public static final UiSection ROTATION_SECTION = UISETTINGS.section("Rotation");
 	public static final UiSection UPDATE_SECTION = UISETTINGS.section("Update");
 	public static final UiSection DEBUG_SECTION = UISETTINGS.section("Debug");
 
 	// Bindables
+	public static final UiDropdown ROTATION_MODE = ROTATION_SECTION.dropdown("Rotation Mode", RotationMode.DEFAULT.displayName());
 	public static final UiSwitch UPDATE_AUTO_CHECK_ON_JOIN = UPDATE_SECTION.toggle("Auto Check On Server Join", true);
 	public static final UiSwitch UPDATE_AUTO_DOWNLOAD_LATEST = UPDATE_SECTION.toggle("Auto Download Latest Update", true);
 	public static final UiButton UPDATE_CHECK = UPDATE_SECTION.button("Check For Updates", "Check",
@@ -650,6 +708,10 @@ public final class UiDefinitions {
 
 	// Visibilities
 	static {
+		ROTATION_MODE.setOptions(RotationMode.displayNames());
+		ROTATION_MODE.bind(UiDefinitions::applyRotationMode);
+		applyRotationMode(ROTATION_MODE.get());
+
 		AUTO_PEARL_DEBUG.visibleWhen(DEBUG);
 		// AUTO_PICKUP_SUPPLY_DEBUG.visibleWhen(DEBUG);
 		AUTO_REND_DEBUG.visibleWhen(DEBUG);
@@ -691,6 +753,14 @@ public final class UiDefinitions {
 	}
 
 	public static void init() {
+	}
+
+	private static void applyRotationMode(String value) {
+		RotationMode mode = RotationMode.fromDisplayName(value);
+		RotationController.setRotationMode(mode);
+		if (!mode.displayName().equals(value)) {
+			ROTATION_MODE.set(mode.displayName());
+		}
 	}
 
 	private static boolean isSpooferMode(String mode) {

@@ -62,6 +62,14 @@ public final class KeyHoldController {
 		}
 	}
 
+	public static void releaseBoundKey(KeyMapping keyMapping) {
+		if (keyMapping == null) {
+			return;
+		}
+		HELD_KEYS_RELEASE_TICK.remove(keyMapping);
+		keyMapping.setDown(isPhysicallyPressed(keyMapping));
+	}
+
 	private static void onClientTick(Minecraft client) {
 		if (client == null || client.player == null) {
 			releaseAllKeys();
@@ -76,7 +84,7 @@ public final class KeyHoldController {
 			}
 			KeyMapping key = entry.getKey();
 			if (key != null) {
-				key.setDown(false);
+				key.setDown(isPhysicallyPressed(key));
 			}
 			return true;
 		});
@@ -85,8 +93,23 @@ public final class KeyHoldController {
 	private static void releaseAllKeys() {
 		for (KeyMapping key : HELD_KEYS_RELEASE_TICK.keySet()) {
 			if (key != null) {
-				key.setDown(false);
+				key.setDown(isPhysicallyPressed(key));
 			}
 		}
+	}
+
+	private static boolean isPhysicallyPressed(KeyMapping keyMapping) {
+		Minecraft client = Minecraft.getInstance();
+		if (client == null || client.getWindow() == null || keyMapping == null) {
+			return false;
+		}
+
+		String keyName = keyMapping.saveString();
+		if (keyName == null || keyName.isBlank()) {
+			return false;
+		}
+
+		InputConstants.Key key = InputConstants.getKey(keyName);
+		return key != null && key != InputConstants.UNKNOWN && InputConstants.isKeyDown(client.getWindow(), key.getValue());
 	}
 }
