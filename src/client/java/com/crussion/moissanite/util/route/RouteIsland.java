@@ -16,7 +16,7 @@ public enum RouteIsland {
 	COMBAT_3("combat_3", "The End"),
 	CRIMSON_ISLE("crismon_isle", "Crimson Isle", "crimson_isle"),
 	HUB("hub", "Hub"),
-	INSTANCED("instanced", "Kuudra's Hollow"),
+	INSTANCED("kuudra", "Kuudra's Hollow"),
 	DYNAMIC("dynamic", "Private Island"),
 	MINING_3("mining_3", "Dwarven Mines"),
 	GARDEN("garden", "The Garden"),

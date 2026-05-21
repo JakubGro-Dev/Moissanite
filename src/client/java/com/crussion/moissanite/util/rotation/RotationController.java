@@ -2,16 +2,13 @@ package com.crussion.moissanite.util.rotation;
 
 import java.util.concurrent.ThreadLocalRandom;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
-import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
+import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
-import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 
 public final class RotationController {
-	private static final Identifier ROTATE_DRIVER_HUD_ID = Identifier.fromNamespaceAndPath("moissanite", "rotation_driver");
 	private static final long RENDER_FALLBACK_NS = 120_000_000L;
 	private static final float TICK_DT_SECONDS = 1.0f / 20.0f;
 	private static final float YAW_SPRING_MIN = 44.0f;
@@ -107,10 +104,7 @@ public final class RotationController {
 		}
 		initialized = true;
 		ClientTickEvents.END_CLIENT_TICK.register(RotationController::onClientTick);
-		HudElementRegistry.attachElementBefore(
-				VanillaHudElements.SUBTITLES,
-				ROTATE_DRIVER_HUD_ID,
-				(graphics, tickCounter) -> onRotateRenderFrame());
+		WorldRenderEvents.END_MAIN.register(context -> onRotateRenderFrame());
 	}
 
 	public static boolean rotateTo(double x, double y, double z) {

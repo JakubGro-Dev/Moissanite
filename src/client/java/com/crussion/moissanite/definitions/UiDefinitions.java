@@ -10,6 +10,7 @@ import com.crussion.moissanite.features.kuudra.KuudraAutoPickupSupply;
 import com.crussion.moissanite.features.visual.RenderImageOnScreen;
 import com.crussion.moissanite.features.visual.storage.StorageOverlayFeature;
 import com.crussion.moissanite.features.mining.UniqueServerHopper;
+import com.crussion.moissanite.features.misc.BurrowsNuker;
 import com.crussion.moissanite.update.ModUpdater;
 import com.crussion.moissanite.util.rotation.RotationController;
 import com.crussion.moissanite.util.rotation.RotationMode;
@@ -51,6 +52,9 @@ public final class UiDefinitions {
 	public static final UiSwitch ZOOM = GENERAL_GENERAL.toggle("Zoom", false);
 	public static final UiKeybind ZOOM_KEYBIND = GENERAL_GENERAL.keybind("Hold Zoom",
 			InputConstants.UNKNOWN.getValue());
+	public static final UiSwitch STATIC_HEALTH_HEARTS = GENERAL_GENERAL.toggle("Static Health Hearts", false);
+	public static final UiSwitch NO_GRASS_RENDER = GENERAL_GENERAL.toggle("No Grass Render", false);
+	public static final UiSwitch NO_MOB_LEFTOVERS = GENERAL_GENERAL.toggle("No Mob Leftovers", false);
 
 	// Visibilities
 	static {
@@ -385,11 +389,13 @@ public final class UiDefinitions {
 
 	// Sections
 	public static final UiSection MISC_GENERAL = MISC.section("General");
+	public static final UiSection MISC_DIANA = MISC.section("Diana");
 	public static final UiSection MISC_SKY_VISUALS = MISC.section("Sky Visuals");
 	public static final UiSection MISC_HAND_VISUALS = MISC.section("Animations");
 
 	// Bindables
 	public static final UiSwitch ALWAYS_SPRINT = MISC_GENERAL.toggle("Always Sprint", false);
+	public static final UiSwitch BURROWS_NUKER = MISC_DIANA.toggle("Burrows Nuker (LBM)", false);
 
 	public static final UiSwitch ENABLE_CUSTOM_TITLE = MISC_GENERAL.toggle("Enable Custom Title", false);
 	public static final UiInput CUSTOM_TITLE = MISC_GENERAL.input("Custom Title", null);
@@ -423,6 +429,7 @@ public final class UiDefinitions {
 		CUSTOM_SKY_TIME_FLOW.visibleWhen(CUSTOM_SKY_VISUALS);
 		CUSTOM_SKY_PHASE.visibleWhen(CUSTOM_SKY_VISUALS);
 		CUSTOM_SKY_WEATHER.visibleWhen(CUSTOM_SKY_VISUALS);
+		BURROWS_NUKER.bind(BurrowsNuker::onToggleChanged);
 	}
 
 	// Cheats

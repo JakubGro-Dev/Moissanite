@@ -6,6 +6,7 @@ import com.crussion.moissanite.features.cheats.WardrobeKeybinds;
 import com.crussion.moissanite.features.dungeons.terminals.DungeonsTerminals;
 import com.crussion.moissanite.features.kuudra.KuudraAutoPickupSupply;
 import com.crussion.moissanite.features.kuudra.KuudraAutoSwapArmorRag;
+import com.crussion.moissanite.features.misc.BurrowsNuker;
 import com.crussion.moissanite.definitions.UiDefinitions;
 import com.crussion.moissanite.util.chat.SystemChatFilter;
 import com.crussion.moissanite.util.hypixel.SkyBlockLocationTracker;
@@ -16,6 +17,7 @@ import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.protocol.game.ClientboundSetActionBarTextPacket;
 import net.minecraft.network.protocol.game.ClientboundContainerClosePacket;
 import net.minecraft.network.protocol.game.ClientboundContainerSetDataPacket;
+import net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket;
 import net.minecraft.network.protocol.game.ClientboundOpenScreenPacket;
 import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
@@ -51,6 +53,7 @@ public class ClientPacketListenerMixin {
 	private void moissanite$filterSystemChat(ClientboundSystemChatPacket packet, CallbackInfo ci) {
 		SkyBlockLocationTracker.onSystemChat(packet.content());
 		UniqueServerHopper.onSystemChat(packet.content());
+		BurrowsNuker.onSystemChat(packet.content());
 		if (SystemChatFilter.shouldHide(packet.content())) {
 			ci.cancel();
 		}
@@ -80,6 +83,11 @@ public class ClientPacketListenerMixin {
 		// 	KuudraAutoPickupSupply.onSystemChat(packet.content());
 		// }
 		DungeonsTerminals.onSystemChat(packet.content());
+	}
+
+	@Inject(method = "handleParticleEvent", at = @At("HEAD"))
+	private void moissanite$handleParticleEvent(ClientboundLevelParticlesPacket packet, CallbackInfo ci) {
+		BurrowsNuker.onParticlePacket(packet);
 	}
 
 	@Inject(method = "handleContainerSetData", at = @At("TAIL"))

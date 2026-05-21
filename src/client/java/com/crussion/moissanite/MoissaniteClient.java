@@ -18,9 +18,11 @@ import com.crussion.moissanite.features.cheats.KuudraPosTracker;
 import com.crussion.moissanite.features.cheats.RouteSystem;
 import com.crussion.moissanite.features.cheats.WardrobeKeybinds;
 import com.crussion.moissanite.features.dungeons.terminals.DungeonsTerminals;
+import com.crussion.moissanite.features.general.GeneralTweaks;
 import com.crussion.moissanite.features.general.Zoom;
 import com.crussion.moissanite.features.mining.StructureScanner;
 import com.crussion.moissanite.features.misc.AlwaysSprint;
+import com.crussion.moissanite.features.misc.BurrowsNuker;
 import com.crussion.moissanite.features.visual.KuudraEsp;
 import com.crussion.moissanite.features.misc.WindowNameChanger;
 import com.crussion.moissanite.features.visual.RenderImageOnScreen;
@@ -56,6 +58,7 @@ public class MoissaniteClient implements ClientModInitializer {
 		MoissaniteCommands.init();
 		UiKeybinds.init();
 		FakeKeybinds.init();
+		GeneralTweaks.init();
 		Zoom.init();
 		WardrobeKeybinds.init();
 		AutoExperiments.init();
@@ -81,6 +84,7 @@ public class MoissaniteClient implements ClientModInitializer {
 		StructureScanner.init();
 		UniqueServerHopper.init();
 		AlwaysSprint.init();
+		BurrowsNuker.init();
 		RenderImageOnScreen.init();
 		DungeonsTerminals.init();
 		StorageOverlayFeature.init();
