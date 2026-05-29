@@ -43,16 +43,17 @@ public final class KuudraAutoOpenChest {
 	private static final int MAX_CROESUS_SCAN_PAGES = 3;
 	private static final int MENU_TIMEOUT_TICKS = 100;
 	private static final int OPEN_CROESUS_TIMEOUT_TICKS = 120;
-	private static final int REOPEN_DELAY_TICKS = 25;
-	private static final int PAGE_CHANGE_WAIT_TICKS = 20;
-	private static final int GUI_SETTLE_TICKS = 12;
-	private static final int NPC_INTERACT_INTERVAL_TICKS = 25;
+	private static final int NPC_INTERACT_INTERVAL_TICKS = 1;
 	private static final int DEFAULT_FIRST_CLICK_DELAY_MS = 1000;
 	private static final int MIN_FIRST_CLICK_DELAY_MS = 1;
 	private static final int MAX_FIRST_CLICK_DELAY_MS = 5000;
 	private static final int DEFAULT_CLICK_DELAY_MS = 600;
 	private static final int MIN_CLICK_DELAY_MS = 1;
 	private static final int MAX_CLICK_DELAY_MS = 2000;
+	private static final int POST_PURCHASE_NPC_CLICK_DELAY_TICKS = 2;
+	private static final double DEFAULT_ROTATION_MULTIPLIER = 0.45D;
+	private static final double MIN_ROTATION_MULTIPLIER = 0.0D;
+	private static final double MAX_ROTATION_MULTIPLIER = 2.0D;
 	private static final double NPC_SEARCH_RADIUS = 12.0D;
 
 	private enum State {
@@ -67,7 +68,8 @@ public final class KuudraAutoOpenChest {
 		SELECT_PAID_CHEST,
 		WAIT_PAID_CHEST,
 		OPEN_REWARD_CHEST,
-		WAIT_AFTER_PURCHASE
+		WAIT_AFTER_PURCHASE,
+		WAIT_CROESUS_AFTER_PURCHASE
 	}
 
 	private static boolean initialized;
@@ -86,6 +88,10 @@ public final class KuudraAutoOpenChest {
 	private static int lastCachedScanPage;
 	private static int currentCroesusPage = 1;
 	private static int pendingPageSourceSignature;
+	private static int pendingPageContainerId = -1;
+	private static long containerContentUpdateVersion;
+	private static long pendingPageContentUpdateVersion;
+	private static int postPurchaseGuiClosedTicks = -1;
 	private static ChestTarget activeTarget;
 	private static Entity croesusTarget;
 	private static Vec3 croesusAimPoint;
@@ -127,6 +133,30 @@ public final class KuudraAutoOpenChest {
 		return running;
 	}
 
+	public static void onContainerContentUpdate(int containerId) {
+		Minecraft client = Minecraft.getInstance();
+		ChestMenu menu = currentMenu(client);
+		if (containerId == 0 || menu == null || menu.containerId != containerId) {
+			return;
+		}
+		markContainerContentUpdated();
+	}
+
+	public static void onContainerSlotUpdate(int containerId, int slotIndex) {
+		Minecraft client = Minecraft.getInstance();
+		ChestMenu menu = currentMenu(client);
+		if (containerId == 0 || menu == null || menu.containerId != containerId
+				|| slotIndex < 0 || slotIndex >= containerSlotCount(menu)) {
+			return;
+		}
+		markContainerContentUpdated();
+	}
+
+	private static void markContainerContentUpdated() {
+		containerContentUpdateVersion++;
+		guiStableTicks = 0;
+	}
+
 	public static void stop() {
 		if (running) {
 			sendMessage("Stopped.");
@@ -166,6 +196,7 @@ public final class KuudraAutoOpenChest {
 			case WAIT_PAID_CHEST -> handleWaitPaidChest(client);
 			case OPEN_REWARD_CHEST -> handleOpenRewardChest(client);
 			case WAIT_AFTER_PURCHASE -> handleWaitAfterPurchase(client);
+			case WAIT_CROESUS_AFTER_PURCHASE -> handleWaitCroesusAfterPurchase(client);
 			case IDLE -> enterState(State.OPEN_CROESUS);
 		}
 	}
@@ -181,13 +212,8 @@ public final class KuudraAutoOpenChest {
 			return;
 		}
 
-		if (croesusAimPoint == null || croesusTarget == null || !croesusTarget.isAlive()) {
-			croesusTarget = findCroesusEntity(client);
-			croesusAimPoint = aimPoint(croesusTarget);
-			if (croesusAimPoint == null) {
-				return;
-			}
-			RotationController.rotateTo(croesusAimPoint.x, croesusAimPoint.y, croesusAimPoint.z, 0.45D);
+		if (!prepareCroesusAim(client)) {
+			return;
 		}
 
 		if (RotationController.isRotating()) {
@@ -208,7 +234,10 @@ public final class KuudraAutoOpenChest {
 			}
 			return;
 		}
-		if (!isGuiStable()) {
+		if (!hasAnyContainerItem(menu)) {
+			return;
+		}
+		if (!isCurrentGuiContentSettled()) {
 			return;
 		}
 
@@ -220,7 +249,7 @@ public final class KuudraAutoOpenChest {
 		int nextPageSlot = findSlotContaining(menu, NEXT_PAGE);
 		if (scanPage < MAX_CROESUS_SCAN_PAGES && nextPageSlot != -1) {
 			if (clickSlot(client, menu, nextPageSlot)) {
-				pendingPageSourceSignature = currentGuiSignature();
+				beginPendingPageTransition(menu);
 				scanPage++;
 				enterState(State.WAIT_SCAN_PAGE);
 			}
@@ -244,7 +273,7 @@ public final class KuudraAutoOpenChest {
 	private static void handleWaitScanPage(Minecraft client) {
 		if (isPageTransitionReady(client)) {
 			currentCroesusPage = scanPage;
-			pendingPageSourceSignature = 0;
+			clearPendingPageTransition();
 			enterState(State.SCAN_CROESUS);
 		}
 		if (stateTicks > MENU_TIMEOUT_TICKS) {
@@ -260,7 +289,7 @@ public final class KuudraAutoOpenChest {
 			}
 			return;
 		}
-		if (!isGuiStable()) {
+		if (!hasAnyContainerItem(menu)) {
 			return;
 		}
 
@@ -280,13 +309,16 @@ public final class KuudraAutoOpenChest {
 		if (currentCroesusPage < activeTarget.page()) {
 			int nextPageSlot = findSlotContaining(menu, NEXT_PAGE);
 			if (nextPageSlot == -1) {
+				if (!isCurrentGuiContentSettled() && stateTicks <= MENU_TIMEOUT_TICKS) {
+					return;
+				}
 				cachedTargets.remove(activeTarget);
 				activeTarget = null;
 				enterState(State.NAVIGATE_TO_TARGET_PAGE);
 				return;
 			}
 			if (clickSlot(client, menu, nextPageSlot)) {
-				pendingPageSourceSignature = currentGuiSignature();
+				beginPendingPageTransition(menu);
 				currentCroesusPage++;
 				enterState(State.WAIT_TARGET_PAGE);
 			}
@@ -298,7 +330,7 @@ public final class KuudraAutoOpenChest {
 
 	private static void handleWaitTargetPage(Minecraft client) {
 		if (isPageTransitionReady(client)) {
-			pendingPageSourceSignature = 0;
+			clearPendingPageTransition();
 			enterState(State.NAVIGATE_TO_TARGET_PAGE);
 		}
 		if (stateTicks > MENU_TIMEOUT_TICKS) {
@@ -314,7 +346,7 @@ public final class KuudraAutoOpenChest {
 			}
 			return;
 		}
-		if (!isGuiStable()) {
+		if (!hasAnyContainerItem(menu)) {
 			return;
 		}
 		if (activeTarget == null) {
@@ -326,6 +358,9 @@ public final class KuudraAutoOpenChest {
 			return;
 		}
 		if (!isValidKuudraChestSlot(menu, activeTarget.slot())) {
+			if (!hasContainerItem(menu, activeTarget.slot()) && stateTicks <= MENU_TIMEOUT_TICKS) {
+				return;
+			}
 			cachedTargets.remove(activeTarget);
 			activeTarget = null;
 			enterState(State.NAVIGATE_TO_TARGET_PAGE);
@@ -357,7 +392,9 @@ public final class KuudraAutoOpenChest {
 
 		int paidChestSlot = findSlotContaining(menu, PAID_CHEST);
 		if (paidChestSlot == -1) {
-			stopInternal("Could not find Paid Chest.");
+			if (stateTicks > MENU_TIMEOUT_TICKS) {
+				stopInternal("Could not find Paid Chest.");
+			}
 			return;
 		}
 		if (clickSlot(client, menu, paidChestSlot)) {
@@ -386,7 +423,9 @@ public final class KuudraAutoOpenChest {
 
 		int openSlot = findOpenRewardChestSlot(menu);
 		if (openSlot == -1) {
-			stopInternal("Could not find Open Reward Chest.");
+			if (stateTicks > MENU_TIMEOUT_TICKS) {
+				stopInternal("Could not find Open Reward Chest.");
+			}
 			return;
 		}
 		if (clickSlot(client, menu, openSlot)) {
@@ -399,17 +438,43 @@ public final class KuudraAutoOpenChest {
 	}
 
 	private static void handleWaitAfterPurchase(Minecraft client) {
-		if (stateTicks < REOPEN_DELAY_TICKS) {
-			return;
-		}
 		if (!hasInfernalKuudraKey(client)) {
 			stopInternal("No Infernal Kuudra Keys found.");
 			return;
 		}
 		if (client.screen != null) {
+			if (stateTicks <= MENU_TIMEOUT_TICKS) {
+				return;
+			}
 			client.setScreen(null);
 		}
-		enterState(State.OPEN_CROESUS);
+		if (postPurchaseGuiClosedTicks < 0) {
+			postPurchaseGuiClosedTicks = 0;
+			croesusTarget = null;
+			croesusAimPoint = null;
+		}
+		if (!prepareCroesusAim(client)) {
+			if (stateTicks > OPEN_CROESUS_TIMEOUT_TICKS) {
+				stopInternal("Could not find Croesus after purchase.");
+			}
+			return;
+		}
+		if (postPurchaseGuiClosedTicks++ < POST_PURCHASE_NPC_CLICK_DELAY_TICKS) {
+			return;
+		}
+		interactWithCroesus(client);
+		enterState(State.WAIT_CROESUS_AFTER_PURCHASE);
+	}
+
+	private static void handleWaitCroesusAfterPurchase(Minecraft client) {
+		if (isCroesusMenu(client)) {
+			currentCroesusPage = 1;
+			enterState(scanComplete ? State.NAVIGATE_TO_TARGET_PAGE : State.SCAN_CROESUS);
+			return;
+		}
+		if (stateTicks > OPEN_CROESUS_TIMEOUT_TICKS) {
+			stopInternal("Croesus did not open after purchase.");
+		}
 	}
 
 	private static Entity findCroesusEntity(Minecraft client) {
@@ -443,6 +508,19 @@ public final class KuudraAutoOpenChest {
 			return null;
 		}
 		return entity.position().add(0.0D, Math.max(1.0D, entity.getBbHeight() * 0.6D), 0.0D);
+	}
+
+	private static boolean prepareCroesusAim(Minecraft client) {
+		if (croesusAimPoint == null || croesusTarget == null || !croesusTarget.isAlive()) {
+			croesusTarget = findCroesusEntity(client);
+			croesusAimPoint = aimPoint(croesusTarget);
+			if (croesusAimPoint == null) {
+				return false;
+			}
+			RotationController.rotateTo(croesusAimPoint.x, croesusAimPoint.y, croesusAimPoint.z,
+					configuredRotationMultiplier());
+		}
+		return true;
 	}
 
 	private static void interactWithCroesus(Minecraft client) {
@@ -536,18 +614,46 @@ public final class KuudraAutoOpenChest {
 		return menu == null ? 0 : menuSignature(menu);
 	}
 
-	private static boolean isGuiStable() {
-		return guiStableTicks >= GUI_SETTLE_TICKS;
+	private static boolean isCurrentGuiContentSettled() {
+		return guiStableTicks > 0;
 	}
 
 	private static boolean isPageTransitionReady(Minecraft client) {
-		if (stateTicks < PAGE_CHANGE_WAIT_TICKS || !isCroesusMenu(client) || !isGuiStable()) {
+		if (!isCroesusMenu(client)) {
 			return false;
 		}
-		if (currentGuiSignature() != pendingPageSourceSignature) {
-			return true;
+		ChestMenu menu = currentMenu(client);
+		if (menu == null || !hasAnyContainerItem(menu)) {
+			return false;
 		}
-		return stateTicks >= PAGE_CHANGE_WAIT_TICKS + GUI_SETTLE_TICKS + 20;
+		if (!hasPendingPageContentUpdate(menu)) {
+			return false;
+		}
+		if (!isCurrentGuiContentSettled()) {
+			return false;
+		}
+		return menu.containerId != pendingPageContainerId || currentGuiSignature() != pendingPageSourceSignature
+				|| containerContentUpdateVersion > pendingPageContentUpdateVersion;
+	}
+
+	private static void beginPendingPageTransition(ChestMenu menu) {
+		pendingPageSourceSignature = menuSignature(menu);
+		pendingPageContainerId = menu.containerId;
+		pendingPageContentUpdateVersion = containerContentUpdateVersion;
+	}
+
+	private static void clearPendingPageTransition() {
+		pendingPageSourceSignature = 0;
+		pendingPageContainerId = -1;
+		pendingPageContentUpdateVersion = 0L;
+	}
+
+	private static boolean hasPendingPageContentUpdate(ChestMenu menu) {
+		if (menu == null) {
+			return false;
+		}
+		return menu.containerId != pendingPageContainerId
+				|| containerContentUpdateVersion > pendingPageContentUpdateVersion;
 	}
 
 	private static int menuSignature(ChestMenu menu) {
@@ -650,6 +756,27 @@ public final class KuudraAutoOpenChest {
 		return Mth.clamp(menu.slots.size() - 36, 0, menu.slots.size());
 	}
 
+	private static boolean hasAnyContainerItem(ChestMenu menu) {
+		if (menu == null) {
+			return false;
+		}
+		int maxSlot = containerSlotCount(menu);
+		for (int slotIndex = 0; slotIndex < maxSlot; slotIndex++) {
+			if (hasContainerItem(menu, slotIndex)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static boolean hasContainerItem(ChestMenu menu, int slotIndex) {
+		if (menu == null || slotIndex < 0 || slotIndex >= containerSlotCount(menu)) {
+			return false;
+		}
+		Slot slot = menu.slots.get(slotIndex);
+		return slot != null && slot.hasItem();
+	}
+
 	private static String normalizedStackName(ItemStack stack) {
 		if (stack == null || stack.isEmpty()) {
 			return "";
@@ -682,9 +809,6 @@ public final class KuudraAutoOpenChest {
 	}
 
 	private static boolean clickSlot(Minecraft client, ChestMenu menu, int slot) {
-		if (guiStableTicks < GUI_SETTLE_TICKS) {
-			return false;
-		}
 		int delayMs = firstClickInCurrentGui ? configuredFirstClickDelayMs() : configuredClickDelayMs();
 		boolean clicked = GuiClickThrottle.clickSlot(client, menu, slot, delayMs, delayMs);
 		if (clicked) {
@@ -705,9 +829,18 @@ public final class KuudraAutoOpenChest {
 		return Mth.clamp(configured, MIN_CLICK_DELAY_MS, MAX_CLICK_DELAY_MS);
 	}
 
+	private static double configuredRotationMultiplier() {
+		Double value = UiDefinitions.AUTO_OPEN_KUUDRA_CHEST_ROTATION_MULTIPLIER.get();
+		double configured = value != null && Double.isFinite(value) ? value : DEFAULT_ROTATION_MULTIPLIER;
+		return Mth.clamp(configured, MIN_ROTATION_MULTIPLIER, MAX_ROTATION_MULTIPLIER);
+	}
+
 	private static void enterState(State nextState) {
 		state = nextState == null ? State.IDLE : nextState;
 		stateTicks = 0;
+		if (state == State.WAIT_AFTER_PURCHASE) {
+			postPurchaseGuiClosedTicks = -1;
+		}
 		if (state == State.OPEN_CROESUS) {
 			lastInteractTick = -NPC_INTERACT_INTERVAL_TICKS;
 			currentCroesusPage = 1;
@@ -745,7 +878,8 @@ public final class KuudraAutoOpenChest {
 		scanPage = 1;
 		lastCachedScanPage = 0;
 		currentCroesusPage = 1;
-		pendingPageSourceSignature = 0;
+		clearPendingPageTransition();
+		postPurchaseGuiClosedTicks = -1;
 		activeTarget = null;
 	}
 

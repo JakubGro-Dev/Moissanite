@@ -562,6 +562,8 @@ public final class UiDefinitions {
 			.slider("Auto Open Kuudra Chest First Click Delay", 1.0, 5000.0, 1000.0, 1.0);
 	public static final UiSlider AUTO_OPEN_KUUDRA_CHEST_CLICK_DELAY = KUUDRA_CHEATS
 			.slider("Auto Open Kuudra Chest Click Delay", 1.0, 2000.0, 600.0, 1.0);
+	public static final UiSlider AUTO_OPEN_KUUDRA_CHEST_ROTATION_MULTIPLIER = KUUDRA_CHEATS
+			.slider("Auto Open Kuudra Chest Rotation Multiplier", 0.0, 2.0, 0.45, 0.1);
 	public static final UiButton AUTO_OPEN_KUUDRA_CHEST_START = KUUDRA_CHEATS
 			.button("Auto Open Kuudra Chest Start", "Start", button -> KuudraAutoOpenChest.start());
 	public static final UiButton AUTO_OPEN_KUUDRA_CHEST_STOP = KUUDRA_CHEATS
@@ -569,6 +571,8 @@ public final class UiDefinitions {
 	public static final UiSwitch AUTO_TAP = KUUDRA_CHEATS.toggle("Auto Tap", false);
 	public static final UiSlider AUTO_TAP_AMOUNT = KUUDRA_CHEATS.slider("Auto Tap Amount", 1.0, 64.0, 32.0, 1.0);
 	public static final UiSwitch AUTO_PEARL_REFILL = KUUDRA_CHEATS.toggle("Auto Pearl Refill Kuudra", false);
+	public static final UiSwitch AUTO_PEARL_REFILL_KUUDRA = KUUDRA_CHEATS.toggle("Auto Pearl Refill In Kuudra", true);
+	public static final UiSwitch AUTO_PEARL_REFILL_DUNGEONS = KUUDRA_CHEATS.toggle("Auto Pearl Refill In Dungeons", false);
 	public static final UiSlider AUTO_PEARL_REFILL_EVERY_TICKS = KUUDRA_CHEATS.slider("Auto Pearl Refill Every X Ticks",
 			1.0, 20.0, 5.0, 1.0);
 	public static final UiSwitch AUTO_REND = KUUDRA_CHEATS.toggle("Auto Rend", false);
@@ -665,11 +669,14 @@ public final class UiDefinitions {
 		// AUTO_PICKUP_SUPPLY_DELAY.visibleWhen(
 		// 		() -> Boolean.TRUE.equals(AUTO_PICKUP_SUPPLY.get()) && !isAutoPickupSupplyManualMode());
 		// AUTO_PICKUP_SUPPLY_RANGE.visibleWhen(AUTO_PICKUP_SUPPLY);
-		AUTO_PEARL_REFILL_EVERY_TICKS.visibleWhen(AUTO_PEARL_REFILL);
+		AUTO_PEARL_REFILL_KUUDRA.visibleWhen(AUTO_PEARL_REFILL);
+		AUTO_PEARL_REFILL_DUNGEONS.visibleWhen(AUTO_PEARL_REFILL);
+		AUTO_PEARL_REFILL_EVERY_TICKS.visibleWhen(() -> false);
 		AUTO_SHOP_FIRST_CLICK_DELAY.visibleWhen(AUTO_SHOP);
 		AUTO_SHOP_CLICK_DELAY.visibleWhen(AUTO_SHOP);
 		AUTO_OPEN_KUUDRA_CHEST_FIRST_CLICK_DELAY.visibleWhen(AUTO_OPEN_KUUDRA_CHEST);
 		AUTO_OPEN_KUUDRA_CHEST_CLICK_DELAY.visibleWhen(AUTO_OPEN_KUUDRA_CHEST);
+		AUTO_OPEN_KUUDRA_CHEST_ROTATION_MULTIPLIER.visibleWhen(AUTO_OPEN_KUUDRA_CHEST);
 		AUTO_OPEN_KUUDRA_CHEST_START.visibleWhen(AUTO_OPEN_KUUDRA_CHEST);
 		AUTO_OPEN_KUUDRA_CHEST_STOP.visibleWhen(KuudraAutoOpenChest::isRunning);
 		AUTO_TAP_AMOUNT.visibleWhen(AUTO_TAP);

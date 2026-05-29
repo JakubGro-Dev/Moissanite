@@ -1,30 +1,37 @@
 package com.crussion.moissanite.features.cheats;
 
 import com.crussion.moissanite.definitions.UiDefinitions;
-import com.crussion.moissanite.util.scoreboard.ScoreboardAreaMatcher;
+import com.crussion.moissanite.util.hypixel.SkyBlockLocationTracker;
+import com.crussion.moissanite.util.text.TextNormalizer;
 
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
-import net.minecraft.util.Mth;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
 public final class AutoPearlRefill {
-	private static final String KUUDRA_HOLLOW = "Kuudra's Hollow";
+	private static final String KUUDRA_MODE = "kuudra";
+	private static final String KUUDRA_MAP = "Kuudra's Hollow";
+	private static final String DUNGEON_MODE = "dungeon";
+	private static final String HAUNT_NAME = "Haunt";
 	private static final int TARGET_PEARL_COUNT = 16;
-	private static final int REFILL_TRIGGER_PEARL_COUNT = 2;
-	private static final int MIN_INTERVAL_TICKS = 1;
-	private static final int MAX_INTERVAL_TICKS = 120;
-	private static final int DEFAULT_INTERVAL_TICKS = 20;
-	private static final int REQUEST_TIMEOUT_TICKS = 60;
+	private static final int MIN_REFILL_AMOUNT = 4;
+	private static final int CHECK_INTERVAL_TICKS = 20;
+	private static final long COMMAND_COOLDOWN_MS = 1_500L;
+	private static final long REQUEST_IN_FLIGHT_MS = 1_750L;
 	private static final String REFILL_COMMAND_PREFIX = "gfs ender_pearl ";
+	private static final String SACKS_TEXT = "Sacks";
+	private static final String ENDER_PEARL_TEXT = "Ender Pearl";
 
 	private static boolean initialized;
 	private static int ticksUntilNextCheck;
-	private static boolean refillRequestPending;
-	private static int pendingRequestStartPearlCount;
-	private static int pendingRequestTimeoutTicks;
+	private static boolean refillRequestInFlight;
+	private static long refillRequestExpiresAtMs;
+	private static long nextRefillCommandAtMs;
 
 	private AutoPearlRefill() {
 	}
@@ -34,7 +41,7 @@ public final class AutoPearlRefill {
 			return;
 		}
 		initialized = true;
-		ClientTickEvents.END_CLIENT_TICK.register(AutoPearlRefill::handleClientTick);
+		ClientTickEvents.START_CLIENT_TICK.register(AutoPearlRefill::handleClientTick);
 	}
 
 	private static void handleClientTick(Minecraft client) {
@@ -42,17 +49,20 @@ public final class AutoPearlRefill {
 			resetRuntimeState();
 			return;
 		}
-		if (!Boolean.TRUE.equals(UiDefinitions.AUTO_PEARL_REFILL.get())) {
-			resetRuntimeState();
-			return;
-		}
-		if (!ScoreboardAreaMatcher.isInArea(KUUDRA_HOLLOW)) {
-			resetRuntimeState();
-			return;
-		}
 
-		int pearlCount = countPearls(client.player.getInventory());
-		if (shouldWaitForPendingRequest(pearlCount)) {
+		SkyBlockLocationTracker.requestRefreshIfNeeded();
+		boolean inDungeons = isInDungeons();
+		if (!isEnabledForCurrentLocation(inDungeons)) {
+			resetRuntimeState();
+			return;
+		}
+		if (isDead(client.player)) {
+			return;
+		}
+		if (client.screen != null) {
+			return;
+		}
+		if (client.player == null) {
 			return;
 		}
 
@@ -61,41 +71,78 @@ public final class AutoPearlRefill {
 			return;
 		}
 
-		ticksUntilNextCheck = configuredIntervalTicks() - 1;
-		if (pearlCount > REFILL_TRIGGER_PEARL_COUNT || pearlCount >= TARGET_PEARL_COUNT) {
+		ticksUntilNextCheck = CHECK_INTERVAL_TICKS - 1;
+		checkAndRefill(client);
+	}
+
+	public static void onUseItemAttempt(Player player, InteractionHand hand) {
+		if (player == null || hand == null) {
+			return;
+		}
+		ItemStack stack = player.getItemInHand(hand);
+		if (stack == null || stack.isEmpty() || !stack.is(Items.ENDER_PEARL)) {
+			return;
+		}
+		ticksUntilNextCheck = 0;
+	}
+
+	public static void onSystemChat(Component message) {
+		if (!refillRequestInFlight) {
 			return;
 		}
 
-		int missingPearls = TARGET_PEARL_COUNT - pearlCount;
-		if (missingPearls <= 0) {
+		String text = TextNormalizer.stripFormattingCodes(message == null ? "" : message.getString()).trim();
+		if (text.contains(SACKS_TEXT) && text.contains(ENDER_PEARL_TEXT)) {
+			refillRequestInFlight = false;
+			ticksUntilNextCheck = 0;
+		}
+	}
+
+	private static void checkAndRefill(Minecraft client) {
+		long now = System.currentTimeMillis();
+		if (refillRequestInFlight) {
+			if (now < refillRequestExpiresAtMs) {
+				return;
+			}
+			refillRequestInFlight = false;
+		}
+		if (now < nextRefillCommandAtMs) {
 			return;
 		}
-		client.player.connection.sendCommand(REFILL_COMMAND_PREFIX + missingPearls);
-		refillRequestPending = true;
-		pendingRequestStartPearlCount = pearlCount;
-		pendingRequestTimeoutTicks = REQUEST_TIMEOUT_TICKS;
+
+		int pearlCount = countPearls(client.player.getInventory());
+		if (pearlCount >= TARGET_PEARL_COUNT) {
+			return;
+		}
+
+		int needed = TARGET_PEARL_COUNT - pearlCount;
+		if (needed < MIN_REFILL_AMOUNT) {
+			return;
+		}
+
+		client.player.connection.sendCommand(REFILL_COMMAND_PREFIX + needed);
+		refillRequestInFlight = true;
+		refillRequestExpiresAtMs = now + REQUEST_IN_FLIGHT_MS;
+		nextRefillCommandAtMs = now + COMMAND_COOLDOWN_MS;
 	}
 
-	private static boolean shouldWaitForPendingRequest(int pearlCount) {
-		if (!refillRequestPending) {
+	private static boolean isEnabledForCurrentLocation(boolean inDungeons) {
+		if (!Boolean.TRUE.equals(UiDefinitions.AUTO_PEARL_REFILL.get())) {
 			return false;
 		}
-		if (pearlCount >= TARGET_PEARL_COUNT || pearlCount > pendingRequestStartPearlCount) {
-			clearPendingRequest();
-			return false;
-		}
-		if (pendingRequestTimeoutTicks > 0) {
-			pendingRequestTimeoutTicks--;
-			return true;
-		}
-		clearPendingRequest();
-		return false;
+		return (inDungeons && Boolean.TRUE.equals(UiDefinitions.AUTO_PEARL_REFILL_DUNGEONS.get()))
+				|| (isInKuudra() && Boolean.TRUE.equals(UiDefinitions.AUTO_PEARL_REFILL_KUUDRA.get()));
 	}
 
-	private static int configuredIntervalTicks() {
-		Double configured = UiDefinitions.AUTO_PEARL_REFILL_EVERY_TICKS.get();
-		double raw = configured != null && Double.isFinite(configured) ? configured : DEFAULT_INTERVAL_TICKS;
-		return Mth.clamp((int) Math.round(raw), MIN_INTERVAL_TICKS, MAX_INTERVAL_TICKS);
+	private static boolean isInKuudra() {
+		SkyBlockLocationTracker.Location location = SkyBlockLocationTracker.currentLocation();
+		return location.isSkyBlock()
+				&& (KUUDRA_MODE.equalsIgnoreCase(location.mode()) || KUUDRA_MAP.equalsIgnoreCase(location.map()));
+	}
+
+	private static boolean isInDungeons() {
+		SkyBlockLocationTracker.Location location = SkyBlockLocationTracker.currentLocation();
+		return location.isSkyBlock() && DUNGEON_MODE.equalsIgnoreCase(location.mode());
 	}
 
 	private static int countPearls(Inventory inventory) {
@@ -121,8 +168,16 @@ public final class AutoPearlRefill {
 	}
 
 	private static void clearPendingRequest() {
-		refillRequestPending = false;
-		pendingRequestStartPearlCount = 0;
-		pendingRequestTimeoutTicks = 0;
+		refillRequestInFlight = false;
+		refillRequestExpiresAtMs = 0L;
+		nextRefillCommandAtMs = 0L;
+	}
+
+	private static boolean isDead(Player player) {
+		if (player == null) {
+			return false;
+		}
+		ItemStack stack = player.getInventory().getItem(0);
+		return stack != null && stack.getCustomName() != null && HAUNT_NAME.equals(stack.getCustomName().getString());
 	}
 }

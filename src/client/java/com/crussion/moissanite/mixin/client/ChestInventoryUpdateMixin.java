@@ -2,6 +2,7 @@ package com.crussion.moissanite.mixin.client;
 
 import com.crussion.moissanite.features.visual.storage.StorageOverlayFeature;
 import com.crussion.moissanite.features.dungeons.terminals.DungeonsTerminals;
+import com.crussion.moissanite.features.kuudra.KuudraAutoOpenChest;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientCommonPacketListenerImpl;
 import net.minecraft.client.multiplayer.ClientPacketListener;
@@ -38,6 +39,7 @@ public abstract class ChestInventoryUpdateMixin extends ClientCommonPacketListen
         if (player != null && packet.getContainerId() == player.containerMenu.containerId
                 && packet.getContainerId() != 0) {
             StorageOverlayFeature.onChestContentUpdate();
+            KuudraAutoOpenChest.onContainerSlotUpdate(packet.getContainerId(), packet.getSlot());
         }
     }
 
@@ -46,6 +48,7 @@ public abstract class ChestInventoryUpdateMixin extends ClientCommonPacketListen
         var player = this.minecraft.player;
         if (player != null && packet.containerId() == player.containerMenu.containerId && packet.containerId() != 0) {
             StorageOverlayFeature.onChestContentUpdate();
+            KuudraAutoOpenChest.onContainerContentUpdate(packet.containerId());
         }
     }
 }
